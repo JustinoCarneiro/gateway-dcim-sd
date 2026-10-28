@@ -1,0 +1,175 @@
+syntax = "proto3";
+
+// Contrato único do sistema de monitoramento de data center (DCIM).
+// Cobre os quatro canais: descoberta (UDP multicast), leituras (UDP),
+// comandos (gRPC) e cliente <-> gateway (TCP com enquadramento por tamanho).
+package datacenter;
+
+option java_multiple_files = true;
+option java_package = "dc.proto";
+
+// ---------------------------------------------------------------------------
+// Tipos comuns
+// ---------------------------------------------------------------------------
+
+enum TipoFonte {
+  TIPO_FONTE_DESCONHECIDO = 0;
+  AR_CONDICIONADO = 1;      // controlável (gRPC)
+  SENSOR_TEMPERATURA = 2;   // contínua, envia evento ao passar do limiar
+  PDU = 3;                  // contínua, consumo de energia
+}
+
+// Grandeza medida em uma leitura. Unidades fixas: °C e W.
+enum Grandeza {
+  GRANDEZA_DESCONHECIDA = 0;
+  TEMPERATURA_C = 1;
+  POTENCIA_W = 2;
+}
+
+// Estado operacional da fonte segundo o gateway.
+enum EstadoFonte {
+  ESTADO_DESCONHECIDO = 0;
+  ATIVA = 1;
+  INATIVA = 2;   // sem leituras por mais de 3 intervalos anunciados
+}
+
+// Estado de operação do ar-condicionado (resposta do gRPC e estado inicial
+// na descoberta).
+message EstadoAr {
+  bool ligado = 1;
+  double setpoint_c = 2;
+  uint32 ventilador_pct = 3;   // 0..100
+  uint32 intervalo_ms = 4;     // período de envio das leituras
+}
+
+// ---------------------------------------------------------------------------
+// Descoberta: UDP multicast 239.255.42.99:5007
+// O gateway envia DescobertaSolicitacao ao iniciar; cada fonte responde com
+// DescobertaResposta por UDP unicast ao endereço de origem da solicitação.
+// ---------------------------------------------------------------------------
+
+message DescobertaSolicitacao {
+  string gateway_ip = 1;          // destino das leituras UDP
+  uint32 gateway_porta_udp = 2;
+  uint32 nonce = 3;
+}
+
+message DescobertaResposta {
+  string fonte_id = 1;            // único, ex.: "ar-01", "temp-rack-A"
+  TipoFonte tipo = 2;
+  string ip = 3;
+  uint32 porta = 4;               // porta gRPC; 0 se não controlável
+  bool controlavel = 5;
+  string rack = 6;                // rack monitorado ("" se não se aplica)
+  uint32 intervalo_ms = 7;        // período de envio anunciado
+  optional EstadoAr estado_inicial = 8;   // só para fontes controláveis
+  uint32 nonce = 9;               // eco do nonce da solicitação
+}
+
+// ---------------------------------------------------------------------------
+// Leituras: UDP unicast fonte -> gateway (um datagrama = uma Leitura)
+// ---------------------------------------------------------------------------
+
+message Leitura {
+  string fonte_id = 1;
+  TipoFonte tipo = 2;
+  string rack = 3;
+  Grandeza grandeza = 4;
+  double valor = 5;
+  int64 timestamp_ms = 6;         // epoch em ms, relógio da fonte
+  bool evento = 7;                // true = envio imediato (limiar ultrapassado)
+  uint32 intervalo_ms = 8;        // período vigente (para o critério de inatividade)
+  uint64 seq = 9;
+  optional EstadoAr estado_ar = 10;   // anexado pelo ar-condicionado
+}
+
+// ---------------------------------------------------------------------------
+// gRPC: gateway -> ar-condicionado
+// Campos opcionais ausentes não alteram o parâmetro. Valores inválidos
+// retornam INVALID_ARGUMENT.
+// ---------------------------------------------------------------------------
+
+message Vazio {}
+
+message ConfigurarRequest {
+  optional bool ligado = 1;
+  optional double setpoint_c = 2;       // 10..35
+  optional uint32 ventilador_pct = 3;   // 0..100
+  optional uint32 intervalo_ms = 4;     // 500..60000
+}
+
+service ArCondicionado {
+  rpc Configurar(ConfigurarRequest) returns (EstadoAr);
+  rpc ObterEstado(Vazio) returns (EstadoAr);
+}
+
+// ---------------------------------------------------------------------------
+// Cliente <-> gateway: TCP, porta 5009.
+// Cada mensagem trafega como [4 bytes big-endian com o tamanho][bytes Protobuf].
+// ---------------------------------------------------------------------------
+
+message FonteInfo {
+  string fonte_id = 1;
+  TipoFonte tipo = 2;
+  string ip = 3;
+  uint32 porta = 4;
+  bool controlavel = 5;
+  string rack = 6;
+  EstadoFonte estado = 7;
+  int64 ultima_leitura_ms = 8;    // 0 se nunca recebeu
+  optional EstadoAr estado_ar = 9;
+}
+
+enum TipoConsulta {
+  CONSULTA_DESCONHECIDA = 0;
+  TEMPERATURA_MEDIA = 1;   // média de TEMPERATURA_C de todos os sensores na janela
+  RACK_MAIS_QUENTE = 2;    // rack com maior média de temperatura na janela
+  PICO_ENERGIA = 3;        // maior POTENCIA_W na janela (e a PDU/rack que a gerou)
+}
+
+message ListarFontesRequest {}
+
+message ComandoRequest {
+  string fonte_id = 1;
+  ConfigurarRequest config = 2;
+}
+
+message ConsultaRequest {
+  TipoConsulta tipo = 1;
+  uint32 janela_s = 2;     // 0 = janela padrão do gateway (300 s)
+}
+
+message PedidoCliente {
+  oneof pedido {
+    ListarFontesRequest listar = 1;
+    ComandoRequest comando = 2;
+    ConsultaRequest consulta = 3;
+  }
+}
+
+message ListarFontesResponse {
+  repeated FonteInfo fontes = 1;
+}
+
+message ComandoResponse {
+  FonteInfo fonte = 1;     // estado atualizado após o comando
+}
+
+message ConsultaResponse {
+  TipoConsulta tipo = 1;
+  uint32 janela_s = 2;
+  bool tem_dados = 3;      // false: nenhuma leitura na janela (valor/referencia vazios)
+  double valor = 4;        // °C ou W conforme a consulta
+  string referencia = 5;   // rack (RACK_MAIS_QUENTE) ou fonte_id (PICO_ENERGIA)
+  uint32 amostras = 6;
+}
+
+message RespostaCliente {
+  bool ok = 1;
+  string erro = 2;         // preenchido quando ok = false
+  oneof resposta {
+    ListarFontesResponse listar = 3;
+    ComandoResponse comando = 4;
+    ConsultaResponse consulta = 5;
+  }
+}
