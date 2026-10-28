@@ -34,6 +34,13 @@
     --tcp: #c9d1e0; --grpc: #5aa2f0; --udp: #ff6b6b; --mc: #51cf66; --ok: #69db7c; --code-c: #8a92a0; --code-t: #c9d1e0;
     color-scheme: dark;
   }
+  /* A parte dos slides é sempre clara (padrão UFC branco), qualquer que seja o tema do sistema; só a doca de terminais segue o tema. */
+  .claro, :root[data-theme="dark"] .claro, :root:not([data-theme="light"]) .claro {
+    --navy: #1a1a1a; --accent: #1a1a1a; --soft: #f2f2f2; --hot: #dcdcdc; --band: #dcdcdc; --btn: #ffffff; --btn-line: #9a9a9a;
+    --bg: #ffffff; --ink: #111111; --muted: #555555; --line: #cfcfcf;
+    --tcp: #1a1a1a; --grpc: #1971c2; --udp: #d93636; --mc: #2f9e44; --ok: #2b8a3e; --code-c: #777777; --code-t: #444444;
+    background: var(--bg); color: var(--ink); color-scheme: light;
+  }
   * { box-sizing: border-box; }
   [hidden] { display: none !important; }
   html, body { height: 100%; }
@@ -98,8 +105,6 @@
   td { padding: 8px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
   tr:last-child td { border-bottom: 0; }
   /* capa (mesma disposição da capa do trabalho de PIC) */
-  :root[data-theme="dark"] .slide.titulo .logo { background: #fff; padding: 6px 10px; }
-  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .slide.titulo .logo { background: #fff; padding: 6px 10px; } }
   .slide.titulo { text-align: center; padding-top: 1vh; }
   .slide.titulo .logo { display: block; margin: 0 auto 8px; height: clamp(90px, 17vh, 150px); width: auto; }
   .slide.titulo .inst { font-size: clamp(13px, 1.3vw, 16px); line-height: 1.5; letter-spacing: .02em; margin-bottom: 18px; }
@@ -188,7 +193,7 @@
 </head>
 <body>
 
-<header class="topo gutter">
+<header class="topo gutter claro">
   <h1 id="ttl"></h1><span id="ttl-tag"></span>
   <nav class="nav" aria-label="Navegação dos slides">
     <button class="btn" id="ant" aria-label="Slide anterior">◀</button>
@@ -196,9 +201,9 @@
     <button class="btn" id="prox" aria-label="Próximo slide">▶</button>
   </nav>
 </header>
-<div class="exp gutter" id="exp" hidden><h4>Experimente</h4><div class="chips" id="chips"></div></div>
+<div class="exp gutter claro" id="exp" hidden><h4>Experimente</h4><div class="chips" id="chips"></div></div>
 
-<main class="palco gutter" id="palco" tabindex="-1">
+<main class="palco gutter claro" id="palco" tabindex="-1">
 
 <!-- 1 ─ Título -->
 <article class="slide titulo" id="slide-1" data-titulo="Título">
