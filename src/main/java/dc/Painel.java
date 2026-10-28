@@ -152,6 +152,15 @@ public class Painel {
     private void pagina(HttpExchange ex) throws IOException {
         if (!hostValido(ex)) { texto(ex, 403, "host inválido"); return; }
         String caminho = ex.getRequestURI().getPath();
+        if (caminho.equals("/lm-fontes.css") || caminho.equals("/ufc_logo.png")) {    // ativos públicos da página, sem token
+            Path arq = Path.of("docs", caminho.substring(1));
+            if (!Files.exists(arq)) { texto(ex, 404, "não encontrado"); return; }
+            byte[] b = Files.readAllBytes(arq);
+            ex.getResponseHeaders().set("Content-Type", caminho.endsWith(".css") ? "text/css; charset=utf-8" : "image/png");
+            ex.sendResponseHeaders(200, b.length);
+            try (OutputStream o = ex.getResponseBody()) { o.write(b); }
+            return;
+        }
         if (!caminho.equals("/") && !caminho.equals("/index.html") && !caminho.equals("/demo-online.html")) {
             texto(ex, 404, "não encontrado");
             return;
