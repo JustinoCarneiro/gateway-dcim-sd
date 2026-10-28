@@ -5,13 +5,14 @@
 <title>Gateway DCIM — Sistemas Distribuídos</title>
 <link rel="stylesheet" href="lm-fontes.css">
 <style>
-  /* Padrão UFC (o mesmo da apresentação de Sistemas Embarcados): fundo branco, faixa azul-marinho com o título
-     em branco, filete laranja, blocos de título azul-marinho e corpo azul-claro, marcadores quadrados laranja,
-     número do slide no canto inferior direito. Fonte: Latin Modern Sans, como no Beamer. */
+  /* Padrão UFC branco (como os trabalhos de Sistemas Embarcados): fundo branco, texto preto, brasão centralizado na capa,
+     título com filete fino, blocos cinza-claro, marcadores quadrados pretos, tabelas booktabs.
+     Só as cores dos protocolos (TCP, gRPC, UDP, multicast) ficam coloridas, porque carregam significado.
+     Fonte: Latin Modern Sans. */
   @page { size: 1280px 720px; margin: 0; }
   :root {
-    --navy: #1F3A5F; --accent: #E07A1F; --soft: #EAF0F7; --ink: #111827; --muted: #4a5568; --line: #c9d3e0;
-    --tcp: #1F3A5F; --grpc: #1971c2; --udp: #d93636; --mc: #2f9e44; --ok: #2b8a3e;
+    --navy: #1a1a1a; --accent: #1a1a1a; --soft: #f2f2f2; --band: #dcdcdc; --ink: #111111; --muted: #555555; --line: #cfcfcf;
+    --tcp: #1a1a1a; --grpc: #1971c2; --udp: #d93636; --mc: #2f9e44; --ok: #2b8a3e;
     --sans: "LM Sans", "Latin Modern Sans", "Liberation Sans", Arial, sans-serif;
     --mono: "LM Mono", "Latin Modern Mono", "DejaVu Sans Mono", monospace;
   }
@@ -23,12 +24,11 @@
   .slide:last-child { page-break-after: auto; break-after: auto; }
 
   /* faixa do título (frametitle) */
-  .faixa { position: absolute; left: 0; top: 0; width: 100%; height: 94px; background: var(--navy); color: #fff;
-           display: flex; align-items: center; justify-content: space-between; padding: 0 72px; }
-  .faixa::after { content: ""; position: absolute; left: 0; right: 0; bottom: -6px; height: 6px; background: var(--accent); }
+  .faixa { position: absolute; left: 72px; right: 72px; top: 0; height: 94px; color: var(--ink); border-bottom: 2.5px solid var(--navy);
+           display: flex; align-items: flex-end; justify-content: space-between; padding: 0 0 14px; }
   .faixa h1 { margin: 0; font-size: 38px; font-weight: 700; letter-spacing: 0; }
-  .corpo { position: absolute; left: 72px; right: 72px; top: 126px; bottom: 54px; }
-  .num { position: absolute; right: 72px; bottom: 22px; font-size: 18px; color: var(--navy); }
+  .corpo { position: absolute; left: 72px; right: 72px; top: 122px; bottom: 54px; }
+  .num { position: absolute; right: 72px; bottom: 22px; font-size: 18px; color: var(--muted); }
 
   .lead { font-size: 23px; line-height: 1.35; margin: 0 0 18px; }
   p, li { font-size: 22px; line-height: 1.38; }
@@ -42,7 +42,7 @@
 
   /* bloco do Beamer */
   .bloco { background: var(--soft); }
-  .bloco > .bt { background: var(--navy); color: #fff; font-size: 23px; padding: 7px 16px; }
+  .bloco > .bt { background: var(--band); color: var(--ink); font-weight: 700; font-size: 23px; padding: 7px 16px; }
   .bloco > .bb { padding: 12px 18px 8px; }
   .bloco p, .bloco li { font-size: 21px; }
   .bloco p { margin: 0 0 6px; }
@@ -52,7 +52,7 @@
         line-height: 1.42; padding: 14px 20px; margin: 0; overflow: hidden; }
   .cols > pre { flex: 1.25; align-self: flex-start; }
   pre.compacto { font-size: 15.5px; line-height: 1.36; padding: 12px 18px; }
-  pre .c { color: #66758c; } pre .k { color: var(--navy); font-weight: 700; } pre .t { color: #b45a0c; font-weight: 700; }
+  pre .c { color: #777777; } pre .k { color: var(--navy); font-weight: 700; } pre .t { color: #444444; font-weight: 700; }
 
   /* tabela no estilo booktabs */
   table { border-collapse: collapse; width: 100%; font-size: 20px; border-top: 3px solid var(--navy); border-bottom: 3px solid var(--navy); }
@@ -60,35 +60,35 @@
   td { padding: 8px 14px; border-bottom: 1px solid var(--line); vertical-align: top; line-height: 1.3; }
   tr:last-child td { border-bottom: 0; }
 
-  .tag { display: inline-block; font-size: 16px; font-weight: 700; color: #fff; padding: 2px 12px; border-radius: 999px; border: 2px solid #fff; }
-  .t-tcp { background: #2c4f80; } .t-grpc { background: var(--grpc); } .t-udp { background: var(--udp); } .t-mc { background: var(--mc); }
+  .tag { display: inline-block; font-size: 16px; font-weight: 700; color: #fff; padding: 2px 12px; border-radius: 999px; }
+  .t-tcp { background: #333333; } .t-grpc { background: var(--grpc); } .t-udp { background: var(--udp); } .t-mc { background: var(--mc); }
   .ok { color: var(--ok); font-weight: 700; }
 
-  /* capa */
-  .capa .topo { position: absolute; left: 0; top: 0; width: 100%; height: 28px; background: var(--navy); }
-  .capa .topo::after { content: ""; position: absolute; left: 0; right: 0; bottom: -8px; height: 8px; background: var(--accent); }
-  .capa .logo { position: absolute; left: 72px; top: 150px; height: 230px; }
-  .capa .tit { position: absolute; left: 270px; right: 72px; top: 170px; }
-  .capa h1 { margin: 0 0 14px; font-size: 52px; line-height: 1.12; color: var(--navy); font-weight: 700; }
-  .capa .sub { font-size: 27px; margin: 0; }
-  .capa .autor { position: absolute; left: 72px; right: 72px; bottom: 74px; font-size: 22px; line-height: 1.5; }
-  .capa .autor span { font-size: 19px; color: var(--muted); }
+  /* capa (mesma disposição da capa do trabalho de PIC) */
+  .capa { text-align: center; }
+  .capa .logo { position: absolute; left: 50%; top: 34px; height: 150px; margin-left: -43px; }
+  .capa .inst { position: absolute; left: 0; right: 0; top: 200px; font-size: 18px; line-height: 1.45; letter-spacing: .02em; }
+  .capa .tit { position: absolute; left: 90px; right: 90px; top: 290px; }
+  .capa h1 { margin: 0 0 12px; font-size: 46px; line-height: 1.12; font-weight: 700; }
+  .capa .sub { font-size: 24px; margin: 0; color: var(--muted); }
+  .capa .autor { position: absolute; left: 0; right: 0; top: 498px; font-size: 24px; }
+  .capa .curso { position: absolute; left: 0; right: 0; top: 540px; font-size: 19px; color: var(--muted); }
+  .capa .loc { position: absolute; left: 0; right: 0; bottom: 36px; font-size: 18px; }
 </style>
 </head>
 <body>
 
 <!-- 1 ─ Capa -->
 <section class="slide capa">
-  <div class="topo"></div>
   <img class="logo" src="ufc_logo.png" alt="UFC">
+  <div class="inst">UNIVERSIDADE FEDERAL DO CEARÁ – UFC<br>CENTRO DE TECNOLOGIA<br>CURSO DE ENGENHARIA DE COMPUTAÇÃO</div>
   <div class="tit">
     <h1>Gateway DCIM: monitoramento de data center</h1>
     <p class="sub">Sistemas distribuídos com multicast, UDP, gRPC e TCP, todas as mensagens em Protocol Buffers</p>
   </div>
-  <div class="autor">
-    <b>Antonio Marcos Justino Carneiro</b> · matrícula <b>511911</b><br>
-    <span>TI0151 – Sistemas Distribuídos (2026.2) · Universidade Federal do Ceará · Professor: Paulo A. L. Rego · Outubro de 2026</span>
-  </div>
+  <div class="autor"><b>Antonio Marcos Justino Carneiro</b> · matrícula <b>511911</b></div>
+  <div class="curso">TI0151 – Sistemas Distribuídos (2026.2) · Professor: Paulo A. L. Rego</div>
+  <div class="loc">FORTALEZA, CE · 2026</div>
 </section>
 
 <!-- 2 ─ Domínio -->
@@ -116,33 +116,33 @@
     <p class="lead" style="margin-bottom:2px">O gateway é servidor para o cliente e para as leituras, e cliente gRPC da fonte controlável.</p>
     <svg viewBox="0 0 1180 470" width="1136" height="448" xmlns="http://www.w3.org/2000/svg" font-family="LM Sans, Liberation Sans, Arial, sans-serif">
       <defs>
-        <marker id="aT" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#1F3A5F"/></marker>
+        <marker id="aT" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#1a1a1a"/></marker>
         <marker id="aG" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#1971c2"/></marker>
         <marker id="aU" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#d93636"/></marker>
         <marker id="aM" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#2f9e44"/></marker>
       </defs>
       <!-- cliente (destaque laranja, como "App do frequentador") e gateway (caixa central) -->
-      <rect x="490" y="6" width="200" height="54" rx="6" fill="#fbe7d4" stroke="#E07A1F" stroke-width="2.5"/>
-      <text x="590" y="30" text-anchor="middle" font-size="20" font-weight="700" fill="#111827">Cliente CLI</text>
-      <text x="590" y="50" text-anchor="middle" font-size="14" fill="#4a5568">processo separado</text>
-      <rect x="440" y="150" width="300" height="80" rx="6" fill="#EAF0F7" stroke="#1F3A5F" stroke-width="3"/>
-      <text x="590" y="184" text-anchor="middle" font-size="24" font-weight="700" fill="#1F3A5F">Gateway</text>
-      <text x="590" y="210" text-anchor="middle" font-size="15" fill="#4a5568">cadastro · histórico · consultas</text>
-      <line x1="590" y1="60" x2="590" y2="150" stroke="#1F3A5F" stroke-width="3" marker-start="url(#aT)" marker-end="url(#aT)"/>
-      <text x="604" y="100" font-size="16" font-weight="700" fill="#1F3A5F">TCP :5009</text>
-      <text x="604" y="120" font-size="14" fill="#4a5568">PedidoCliente / RespostaCliente</text>
+      <rect x="490" y="6" width="200" height="54" rx="6" fill="#dcdcdc" stroke="#1a1a1a" stroke-width="2.5"/>
+      <text x="590" y="30" text-anchor="middle" font-size="20" font-weight="700" fill="#111111">Cliente CLI</text>
+      <text x="590" y="50" text-anchor="middle" font-size="14" fill="#555555">processo separado</text>
+      <rect x="440" y="150" width="300" height="80" rx="6" fill="#f2f2f2" stroke="#1a1a1a" stroke-width="3"/>
+      <text x="590" y="184" text-anchor="middle" font-size="24" font-weight="700" fill="#1a1a1a">Gateway</text>
+      <text x="590" y="210" text-anchor="middle" font-size="15" fill="#555555">cadastro · histórico · consultas</text>
+      <line x1="590" y1="60" x2="590" y2="150" stroke="#1a1a1a" stroke-width="3" marker-start="url(#aT)" marker-end="url(#aT)"/>
+      <text x="604" y="100" font-size="16" font-weight="700" fill="#1a1a1a">TCP :5009</text>
+      <text x="604" y="120" font-size="14" fill="#555555">PedidoCliente / RespostaCliente</text>
       <!-- fontes -->
-      <g font-size="17" font-weight="700" fill="#111827" text-anchor="middle">
-        <rect x="55" y="360" width="190" height="72" rx="6" fill="#EAF0F7" stroke="#1971c2" stroke-width="3"/>
-        <text x="150" y="388">Ar-condicionado</text><text x="150" y="412" font-size="14" font-weight="400" fill="#4a5568">controlável · gRPC :50051</text>
-        <rect x="275" y="360" width="190" height="72" rx="6" fill="#EAF0F7" stroke="#1F3A5F" stroke-width="2"/>
-        <text x="370" y="388">Sensor rack A</text><text x="370" y="412" font-size="14" font-weight="400" fill="#4a5568">contínuo · evento &gt; 27 °C</text>
-        <rect x="495" y="360" width="190" height="72" rx="6" fill="#EAF0F7" stroke="#1F3A5F" stroke-width="2"/>
-        <text x="590" y="388">Sensor rack B</text><text x="590" y="412" font-size="14" font-weight="400" fill="#4a5568">contínuo · evento &gt; 27 °C</text>
-        <rect x="715" y="360" width="190" height="72" rx="6" fill="#EAF0F7" stroke="#1F3A5F" stroke-width="2"/>
-        <text x="810" y="388">PDU rack A</text><text x="810" y="412" font-size="14" font-weight="400" fill="#4a5568">contínua · watts</text>
-        <rect x="935" y="360" width="190" height="72" rx="6" fill="#EAF0F7" stroke="#1F3A5F" stroke-width="2"/>
-        <text x="1030" y="388">PDU rack B</text><text x="1030" y="412" font-size="14" font-weight="400" fill="#4a5568">contínua · watts</text>
+      <g font-size="17" font-weight="700" fill="#111111" text-anchor="middle">
+        <rect x="55" y="360" width="190" height="72" rx="6" fill="#f2f2f2" stroke="#1971c2" stroke-width="3"/>
+        <text x="150" y="388">Ar-condicionado</text><text x="150" y="412" font-size="14" font-weight="400" fill="#555555">controlável · gRPC :50051</text>
+        <rect x="275" y="360" width="190" height="72" rx="6" fill="#f2f2f2" stroke="#1a1a1a" stroke-width="2"/>
+        <text x="370" y="388">Sensor rack A</text><text x="370" y="412" font-size="14" font-weight="400" fill="#555555">contínuo · evento &gt; 27 °C</text>
+        <rect x="495" y="360" width="190" height="72" rx="6" fill="#f2f2f2" stroke="#1a1a1a" stroke-width="2"/>
+        <text x="590" y="388">Sensor rack B</text><text x="590" y="412" font-size="14" font-weight="400" fill="#555555">contínuo · evento &gt; 27 °C</text>
+        <rect x="715" y="360" width="190" height="72" rx="6" fill="#f2f2f2" stroke="#1a1a1a" stroke-width="2"/>
+        <text x="810" y="388">PDU rack A</text><text x="810" y="412" font-size="14" font-weight="400" fill="#555555">contínua · watts</text>
+        <rect x="935" y="360" width="190" height="72" rx="6" fill="#f2f2f2" stroke="#1a1a1a" stroke-width="2"/>
+        <text x="1030" y="388">PDU rack B</text><text x="1030" y="412" font-size="14" font-weight="400" fill="#555555">contínua · watts</text>
       </g>
       <path d="M440,190 C260,190 90,250 90,360" fill="none" stroke="#1971c2" stroke-width="3" marker-end="url(#aG)"/>
       <text x="60" y="168" font-size="16" font-weight="700" fill="#1971c2">gRPC · comandos e estado</text>
@@ -158,12 +158,12 @@
       </g>
       <text x="760" y="176" font-size="16" font-weight="700" fill="#2f9e44">multicast 239.255.42.99:5007 (pedido)</text>
       <text x="760" y="198" font-size="14" fill="#2f9e44">a resposta de cada fonte volta por UDP unicast</text>
-      <g font-size="15" fill="#111827">
-        <line x1="55" y1="458" x2="95" y2="458" stroke="#1F3A5F" stroke-width="3"/><text x="102" y="463">TCP</text>
+      <g font-size="15" fill="#111111">
+        <line x1="55" y1="458" x2="95" y2="458" stroke="#1a1a1a" stroke-width="3"/><text x="102" y="463">TCP</text>
         <line x1="170" y1="458" x2="210" y2="458" stroke="#1971c2" stroke-width="3"/><text x="217" y="463">gRPC</text>
         <line x1="290" y1="458" x2="330" y2="458" stroke="#d93636" stroke-width="2.4" stroke-dasharray="7 5"/><text x="337" y="463">UDP</text>
         <line x1="405" y1="458" x2="445" y2="458" stroke="#2f9e44" stroke-width="2.4" stroke-dasharray="2 6" stroke-linecap="round"/><text x="452" y="463">UDP multicast</text>
-        <text x="600" y="463" fill="#4a5568">Todas as mensagens são serializadas com Protocol Buffers.</text>
+        <text x="600" y="463" fill="#555555">Todas as mensagens são serializadas com Protocol Buffers.</text>
       </g>
     </svg>
   </div>
@@ -297,10 +297,10 @@
   <div class="corpo">
     <p class="lead" style="margin-bottom:8px">TCP é um fluxo de bytes sem fronteiras de mensagem: cada mensagem Protobuf é enquadrada com seu tamanho.</p>
     <svg viewBox="0 0 1136 74" width="1136" height="74" xmlns="http://www.w3.org/2000/svg" font-family="LM Sans, Liberation Sans, Arial, sans-serif">
-      <rect x="0" y="8" width="240" height="56" fill="#1F3A5F"/><text x="120" y="42" text-anchor="middle" fill="#fff" font-size="20" font-weight="700">tamanho · 4 bytes</text>
-      <rect x="240" y="8" width="520" height="56" fill="#EAF0F7" stroke="#1F3A5F" stroke-width="2"/><text x="500" y="42" text-anchor="middle" fill="#1F3A5F" font-size="20" font-weight="700">corpo: PedidoCliente ou RespostaCliente (Protobuf)</text>
-      <rect x="760" y="8" width="240" height="56" fill="#1F3A5F"/><text x="880" y="42" text-anchor="middle" fill="#fff" font-size="20" font-weight="700">tamanho · 4 bytes</text>
-      <rect x="1000" y="8" width="136" height="56" fill="#EAF0F7" stroke="#1F3A5F" stroke-width="2"/><text x="1068" y="42" text-anchor="middle" fill="#1F3A5F" font-size="20" font-weight="700">próxima…</text>
+      <rect x="0" y="8" width="240" height="56" fill="#1a1a1a"/><text x="120" y="42" text-anchor="middle" fill="#fff" font-size="20" font-weight="700">tamanho · 4 bytes</text>
+      <rect x="240" y="8" width="520" height="56" fill="#f2f2f2" stroke="#1a1a1a" stroke-width="2"/><text x="500" y="42" text-anchor="middle" fill="#1a1a1a" font-size="20" font-weight="700">corpo: PedidoCliente ou RespostaCliente (Protobuf)</text>
+      <rect x="760" y="8" width="240" height="56" fill="#1a1a1a"/><text x="880" y="42" text-anchor="middle" fill="#fff" font-size="20" font-weight="700">tamanho · 4 bytes</text>
+      <rect x="1000" y="8" width="136" height="56" fill="#f2f2f2" stroke="#1a1a1a" stroke-width="2"/><text x="1068" y="42" text-anchor="middle" fill="#1a1a1a" font-size="20" font-weight="700">próxima…</text>
     </svg>
     <p class="peq" style="margin:4px 0 12px">Inteiro de 4 bytes em big-endian com o tamanho do corpo, seguido do corpo.</p>
     <div class="cols">

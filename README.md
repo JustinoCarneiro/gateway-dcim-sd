@@ -82,7 +82,7 @@ consulta media|rack|pico [janela_s]
 
 ## Versão navegável (slides + terminais)
 
-`docs/demo-online.html` reúne os 12 slides e os 7 terminais numa página só, com o mesmo visual dos slides (`docs/slides.pdf`, padrão UFC: faixa azul-marinho, filete laranja, fonte Latin Modern). Tem dois modos:
+`docs/demo-online.html` reúne os 12 slides e os 7 terminais numa página só, com o mesmo visual dos slides (`docs/slides.pdf`, padrão UFC branco: fundo branco, brasão na capa, fonte Latin Modern). Tem dois modos:
 
 - **Java real** (o que vale para a demonstração): a página controla os processos Java **deste computador**. Como o navegador não sobe processos, existe uma ponte local, a classe `Painel`:
 

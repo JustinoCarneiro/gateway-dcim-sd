@@ -7,29 +7,31 @@
 <title>Gateway DCIM ao vivo</title>
 <link rel="stylesheet" href="lm-fontes.css">
 <style>
-  /* Mesmo padrão UFC dos slides (Beamer de Sistemas Embarcados): faixa azul-marinho com o título em branco e filete laranja,
-     blocos de título azul-marinho e corpo azul-claro, marcadores quadrados laranja, tabelas no estilo booktabs.
-     Fonte: Latin Modern Sans (lm-fontes.css). Os terminais ficam escuros, como qualquer terminal. */
+  /* Mesmo padrão UFC branco dos slides: fundo branco, texto preto, título com filete fino, blocos cinza-claro,
+     marcadores quadrados pretos, tabelas booktabs. Só as cores dos protocolos têm cor. Fonte: Latin Modern Sans
+     (lm-fontes.css). Os terminais ficam escuros, como qualquer terminal. */
   :root {
-    --navy: #1F3A5F; --accent: #E07A1F; --soft: #EAF0F7; --hot: #fbe7d4;
-    --bg: #ffffff; --ink: #111827; --muted: #4a5568; --line: #c9d3e0;
-    --tcp: #1F3A5F; --grpc: #1971c2; --udp: #d93636; --mc: #2f9e44; --ok: #2b8a3e;
-    --code-c: #66758c; --code-t: #b45a0c;
-    --term-bg: #0a1626; --term-fg: #dbe5f2; --term-dim: #7f93b0; --term-line: #1d3150; --term-bar: #12233c;
+    --navy: #1a1a1a; --accent: #1a1a1a; --soft: #f2f2f2; --hot: #dcdcdc; --band: #dcdcdc; --dock: #ececec; --btn: #ffffff; --btn-line: #9a9a9a;
+    --bg: #ffffff; --ink: #111111; --muted: #555555; --line: #cfcfcf;
+    --tcp: #1a1a1a; --grpc: #1971c2; --udp: #d93636; --mc: #2f9e44; --ok: #2b8a3e;
+    --code-c: #777777; --code-t: #444444;
+    --term-bg: #0d0f13; --term-fg: #e1e5ec; --term-dim: #858c99; --term-line: #2a2f38; --term-bar: #171a20;
     --t-udp: #ff8585; --t-grpc: #74b8ff; --t-mc: #67d982; --t-tcp: #a5b9dc; --t-ev: #ffb454; --t-err: #ff7676; --t-warn: #f2d36b;
     --sans: "LM Sans", "Latin Modern Sans", "Liberation Sans", Arial, sans-serif;
     --mono: "LM Mono", "Latin Modern Mono", "DejaVu Sans Mono", monospace;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
-      --accent: #F08C34; --soft: #162841; --hot: #3a2a1c; --bg: #0d1828; --ink: #e6edf6; --muted: #9fb0c6; --line: #2a3d5c;
-      --tcp: #a5b9dc; --grpc: #5aa2f0; --udp: #ff6b6b; --mc: #51cf66; --ok: #69db7c; --code-c: #8fa3bd; --code-t: #ffb067;
+      --navy: #ececec; --accent: #ececec; --soft: #1c1f26; --hot: #2c313b; --band: #2c313b; --dock: #1a1d23; --btn: #262a33; --btn-line: #4a505c;
+      --bg: #101216; --ink: #ececec; --muted: #a3a9b5; --line: #343a45;
+      --tcp: #c9d1e0; --grpc: #5aa2f0; --udp: #ff6b6b; --mc: #51cf66; --ok: #69db7c; --code-c: #8a92a0; --code-t: #c9d1e0;
       color-scheme: dark;
     }
   }
   :root[data-theme="dark"] {
-    --accent: #F08C34; --soft: #162841; --hot: #3a2a1c; --bg: #0d1828; --ink: #e6edf6; --muted: #9fb0c6; --line: #2a3d5c;
-    --tcp: #a5b9dc; --grpc: #5aa2f0; --udp: #ff6b6b; --mc: #51cf66; --ok: #69db7c; --code-c: #8fa3bd; --code-t: #ffb067;
+    --navy: #ececec; --accent: #ececec; --soft: #1c1f26; --hot: #2c313b; --band: #2c313b; --dock: #1a1d23; --btn: #262a33; --btn-line: #4a505c;
+    --bg: #101216; --ink: #ececec; --muted: #a3a9b5; --line: #343a45;
+    --tcp: #c9d1e0; --grpc: #5aa2f0; --udp: #ff6b6b; --mc: #51cf66; --ok: #69db7c; --code-c: #8a92a0; --code-t: #c9d1e0;
     color-scheme: dark;
   }
   * { box-sizing: border-box; }
@@ -44,29 +46,26 @@
   b { font-weight: 700; }
   code { font-family: var(--mono); font-size: 0.9em; background: var(--soft); padding: 1px 6px; }
   button, select, input { font: inherit; color: inherit; }
-  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  :focus-visible { outline: 2px solid var(--grpc); outline-offset: 2px; }
 
   /* ---------- faixa do título (frametitle) ---------- */
-  .topo { position: relative; display: flex; align-items: center; gap: 12px 18px; flex-wrap: wrap; min-height: 62px; padding-block: 8px; background: var(--navy); color: #fff; }
-  .topo::after { content: ""; position: absolute; left: 0; right: 0; bottom: -5px; height: 5px; background: var(--accent); z-index: 3; }
+  .topo { position: relative; display: flex; align-items: center; gap: 12px 18px; flex-wrap: wrap; min-height: 62px; padding-block: 8px; background: var(--bg); color: var(--ink); border-bottom: 2.5px solid var(--navy); }
   .topo h1 { margin: 0; font-size: clamp(20px, 2.6vw, 30px); font-weight: 700; line-height: 1.15; flex: 0 1 auto; min-width: 0; }
-  body.capa .topo { min-height: 36px; padding-block: 4px; } body.capa .topo h1, body.capa #ttl-tag { display: none; }
+  body.capa .topo { min-height: 40px; padding-block: 4px; } body.capa .topo h1, body.capa #ttl-tag { display: none; }
   #ttl-tag .tag { margin-left: 0; }
   .nav { display: flex; align-items: center; gap: 6px; margin-left: auto; min-width: 0; }
-  .nav select { max-width: min(46vw, 320px); background: var(--navy); border: 1px solid #5f7ea6; border-radius: 3px; padding: 4px 8px; color: #fff; }
-  .nav .btn { background: var(--navy); border: 1px solid #5f7ea6; color: #fff; border-radius: 3px; padding: 4px 11px; cursor: pointer; }
-  .nav .btn:hover:not(:disabled) { border-color: #fff; }
-  .nav .btn:disabled { opacity: .4; cursor: default; }
-  .btn { background: var(--soft); border: 1px solid var(--line); border-radius: 3px; padding: 5px 11px; cursor: pointer; }
+  .nav select { max-width: min(46vw, 320px); background: var(--btn); border: 1px solid var(--btn-line); border-radius: 3px; padding: 4px 8px; color: var(--ink); }
+  .nav .btn { background: var(--btn); border: 1px solid var(--btn-line); color: var(--ink); border-radius: 3px; padding: 4px 11px; cursor: pointer; }
+  .nav .btn:hover:not(:disabled) { border-color: var(--navy); }
+  .nav .btn:disabled { opacity: .35; cursor: default; }
+  .btn { background: var(--btn); border: 1px solid var(--btn-line); border-radius: 3px; padding: 5px 11px; cursor: pointer; }
 
   /* ---------- faixa "Experimente" ---------- */
-  .exp { display: flex; align-items: center; gap: 12px; padding-block: 7px; margin-top: 5px; background: var(--soft); border-bottom: 1px solid var(--line); min-width: 0; }
+  .exp { display: flex; align-items: center; gap: 12px; padding-block: 7px; background: var(--soft); border-bottom: 1px solid var(--line); min-width: 0; }
   .exp h4 { margin: 0; flex: none; font-size: 14px; letter-spacing: .04em; color: var(--navy); }
-  :root[data-theme="dark"] .exp h4 { color: #9db8de; }
-  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .exp h4 { color: #9db8de; } }
   .exp .chips { display: flex; gap: 8px; overflow-x: auto; min-width: 0; padding-block: 2px; }
-  .chip { flex: none; white-space: nowrap; border: 1px solid var(--navy); background: var(--bg); border-radius: 3px; padding: 4px 10px; cursor: pointer; font-size: 14.5px; }
-  .chip:hover { border-color: var(--accent); box-shadow: inset 0 -3px 0 var(--accent); }
+  .chip { flex: none; white-space: nowrap; border: 1px solid var(--btn-line); background: var(--btn); border-radius: 3px; padding: 4px 10px; cursor: pointer; font-size: 14.5px; }
+  .chip:hover { border-color: var(--navy); box-shadow: inset 0 -3px 0 var(--navy); }
   .chip code { background: transparent; padding: 0; }
   .chip small { color: var(--muted); margin-left: 6px; }
 
@@ -80,38 +79,41 @@
   .slide li { position: relative; padding-left: 26px; margin-bottom: 8px; }
   .slide li::before { content: ""; position: absolute; left: 3px; top: .6em; width: 9px; height: 9px; background: var(--accent); }
   .peq { font-size: 14.5px; color: var(--muted); }
-  .tag { display: inline-block; font-size: 13px; font-weight: 700; color: #fff; padding: 2px 12px; border-radius: 999px; border: 2px solid #fff; vertical-align: middle; }
-  .t-tcp { background: #2c4f80; } .t-grpc { background: #1971c2; } .t-udp { background: #d93636; } .t-mc { background: #2f9e44; }
+  .tag { display: inline-block; font-size: 13px; font-weight: 700; color: #fff; padding: 2px 12px; border-radius: 999px; vertical-align: middle; }
+  .t-tcp { background: #333333; } .t-grpc { background: #1971c2; } .t-udp { background: #d93636; } .t-mc { background: #2f9e44; }
   .cols { display: flex; flex-wrap: wrap; gap: 20px 28px; align-items: flex-start; }
   .cols > * { flex: 1 1 340px; min-width: 0; }
   .cols > pre { flex: 1.2 1 380px; }
   /* bloco do Beamer */
   .card { background: var(--soft); }
-  .card h3 { margin: 0; background: var(--navy); color: #fff; font-size: 17px; font-weight: 400; padding: 6px 16px; }
+  .card h3 { margin: 0; background: var(--band); color: var(--ink); font-size: 17px; font-weight: 700; padding: 6px 16px; }
   .card p, .card ul { margin: 0; padding: 12px 18px 8px; }
   .card h3 ~ h3 { margin-top: 10px; }
   .card p { font-size: 16px !important; }
   pre { background: var(--soft); border-left: 6px solid var(--navy); color: var(--ink); font-family: var(--mono); font-size: 13.5px; line-height: 1.5; padding: 13px 16px; margin: 0; overflow-x: auto; }
   pre .c { color: var(--code-c); } pre .k { color: var(--navy); font-weight: 700; } pre .t { color: var(--code-t); font-weight: 700; }
-  :root[data-theme="dark"] pre .k { color: #8fb4ea; } @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) pre .k { color: #8fb4ea; } }
   .rolagem { overflow-x: auto; }
   table { border-collapse: collapse; width: 100%; font-size: 15.5px; border-top: 3px solid var(--navy); border-bottom: 3px solid var(--navy); }
   th { text-align: left; color: var(--navy); font-weight: 700; padding: 8px 12px; border-bottom: 1.5px solid var(--navy); }
-  :root[data-theme="dark"] th { color: #9db8de; } @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) th { color: #9db8de; } }
   td { padding: 8px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
   tr:last-child td { border-bottom: 0; }
-  /* capa */
-  .slide.titulo { display: flex; flex-wrap: wrap; gap: 18px 32px; align-items: center; padding-top: 3vh; }
-  .slide.titulo > h1 { display: block; flex: 1 1 340px; margin: 0; color: var(--navy); font-size: clamp(30px, 4.4vw, 50px); line-height: 1.12; }
-  :root[data-theme="dark"] .slide.titulo > h1 { color: #9db8de; } @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .slide.titulo > h1 { color: #9db8de; } }
-  .slide.titulo .logo { height: clamp(110px, 20vh, 180px); width: auto; flex: none; background: #fff; padding: 8px 10px; }
-  .slide.titulo .corpo-capa { flex: 1 1 100%; }
+  /* capa (mesma disposição da capa do trabalho de PIC) */
+  :root[data-theme="dark"] .slide.titulo .logo { background: #fff; padding: 6px 10px; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .slide.titulo .logo { background: #fff; padding: 6px 10px; } }
+  .slide.titulo { text-align: center; padding-top: 1vh; }
+  .slide.titulo .logo { display: block; margin: 0 auto 8px; height: clamp(90px, 17vh, 150px); width: auto; }
+  .slide.titulo .inst { font-size: clamp(13px, 1.3vw, 16px); line-height: 1.5; letter-spacing: .02em; margin-bottom: 18px; }
+  .slide.titulo > h1 { display: block; margin: 0 0 8px; font-size: clamp(26px, 4vw, 44px); line-height: 1.12; }
+  .slide.titulo .sub { margin: 0 auto 18px; color: var(--muted); }
+  .slide.titulo .autor { font-size: clamp(17px, 1.8vw, 22px); }
+  .slide.titulo .curso { color: var(--muted); font-size: clamp(14px, 1.4vw, 17px); margin-bottom: 14px; }
+  .slide.titulo .nota-capa { max-width: 70ch; margin: 18px auto 0; text-align: left; }
   svg.diagrama { width: 100%; height: auto; max-height: 52vh; display: block; }
   svg .tx { fill: var(--ink); } svg .tm { fill: var(--muted); }
   svg .nd { fill: var(--soft); stroke: var(--navy); stroke-width: 2; transition: opacity .3s; }
   svg .nd-gw { stroke: var(--navy); stroke-width: 3; }
   svg .nd-ar { stroke: var(--grpc); stroke-width: 3; }
-  svg #n-cli .nd { fill: var(--hot); stroke: var(--accent); stroke-width: 2.5; }
+  svg #n-cli .nd { fill: var(--hot); stroke: var(--navy); stroke-width: 2.5; }
   svg g.no.off { opacity: .38; }
   svg .ln { transition: opacity .25s, stroke-width .25s; }
   svg .ln.flash { opacity: 1 !important; stroke-width: 5; }
@@ -119,52 +121,52 @@
   .f-tcp { fill: var(--tcp); } .f-grpc { fill: var(--grpc); } .f-udp { fill: var(--udp); } .f-mc { fill: var(--mc); }
 
   /* ---------- divisor e doca de terminais ---------- */
-  .divisor { height: 7px; background: var(--accent); cursor: row-resize; position: relative; touch-action: none; }
-  .divisor::after { content: ""; position: absolute; left: 50%; top: 2px; width: 44px; height: 3px; margin-left: -22px; border-radius: 2px; background: #fff; opacity: .85; }
-  .dock { height: var(--dock-h, 41vh); display: flex; flex-direction: column; min-height: 0; background: var(--navy); color: #fff; }
-  .barra { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding-block: 7px; border-bottom: 1px solid #0f2038; font-size: 14px; }
-  .barra .btn { background: #2a4a75; border-color: #4c6e9c; color: #fff; padding: 3px 10px; font-size: 14px; }
-  .barra .btn:hover:not(:disabled) { border-color: #fff; }
-  .barra .btn.pri { background: var(--accent); border-color: var(--accent); color: #1a0e00; font-weight: 700; }
-  .barra label { display: inline-flex; align-items: center; gap: 6px; color: #dbe5f2; }
-  .barra input[type=range] { width: 70px; accent-color: #E07A1F; }
-  .barra select { background: #2a4a75; border: 1px solid #4c6e9c; border-radius: 3px; padding: 2px 6px; color: #fff; }
+  .divisor { height: 6px; background: var(--navy); cursor: row-resize; position: relative; touch-action: none; }
+  .divisor::after { content: ""; position: absolute; left: 50%; top: 1.5px; width: 44px; height: 3px; margin-left: -22px; border-radius: 2px; background: var(--bg); opacity: .9; }
+  .dock { height: var(--dock-h, 41vh); display: flex; flex-direction: column; min-height: 0; background: var(--dock); color: var(--ink); }
+  .barra { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding-block: 7px; border-bottom: 1px solid var(--line); font-size: 14px; }
+  .barra .btn { background: var(--btn); border-color: var(--btn-line); color: var(--ink); padding: 3px 10px; font-size: 14px; }
+  .barra .btn:hover:not(:disabled) { border-color: var(--navy); }
+  .barra .btn.pri { background: var(--navy); border-color: var(--navy); color: var(--bg); font-weight: 700; }
+  .barra label { display: inline-flex; align-items: center; gap: 6px; color: var(--ink); }
+  .barra input[type=range] { width: 70px; accent-color: #444444; }
+  .barra select { background: var(--btn); border: 1px solid var(--btn-line); border-radius: 3px; padding: 2px 6px; color: var(--ink); }
   .barra output { min-width: 3ch; font-family: var(--mono); }
-  .barra .nota { flex: 1 1 auto; text-align: right; color: #b6c8e0; font-size: 13px; }
-  .barra .nota a { color: #ffd2a6; }
+  .barra .nota { flex: 1 1 auto; text-align: right; color: var(--muted); font-size: 13px; }
+  .barra .nota a { color: var(--grpc); }
   .modo { display: inline-flex; }
   .modo .btn:first-child { border-radius: 3px 0 0 3px; } .modo .btn:last-child { border-radius: 0 3px 3px 0; margin-left: -1px; }
-  .barra .modo .btn[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #1a0e00; font-weight: 700; }
+  .barra .modo .btn[aria-pressed="true"] { background: var(--navy); border-color: var(--navy); color: var(--bg); font-weight: 700; }
   #r-box { display: inline-flex; gap: 6px; } #r-box[hidden] { display: none; }
-  #r-box input { background: #0f2038; border: 1px solid #4c6e9c; border-radius: 3px; padding: 2px 6px; color: #fff; font-family: var(--mono); font-size: 13px; }
-  #r-msg { font-size: 13px; color: #ffd2a6; }
+  #r-box input { background: var(--btn); border: 1px solid var(--btn-line); border-radius: 3px; padding: 2px 6px; color: var(--ink); font-family: var(--mono); font-size: 13px; }
+  #r-msg { font-size: 13px; color: var(--muted); }
   .barra :disabled { opacity: .45; cursor: not-allowed; }
-  .terminais { flex: 1; min-height: 0; display: grid; gap: 6px; padding: 6px max(8px, env(safe-area-inset-left, 0px)) 8px; grid-template-columns: repeat(10, minmax(0, 1fr)); grid-template-rows: minmax(0, 1.25fr) minmax(0, 1fr); grid-auto-rows: minmax(130px, .8fr); overflow: auto; position: relative; background: #0f2038; }
+  .terminais { flex: 1; min-height: 0; display: grid; gap: 6px; padding: 6px max(8px, env(safe-area-inset-left, 0px)) 8px; grid-template-columns: repeat(10, minmax(0, 1fr)); grid-template-rows: minmax(0, 1.25fr) minmax(0, 1fr); grid-auto-rows: minmax(130px, .8fr); overflow: auto; position: relative; background: var(--dock); }
   .pane { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--term-bg); border: 1px solid var(--term-line); border-radius: 3px; overflow: hidden; grid-column: span 2; }
   .pane.p-gw { grid-column: span 4; } .pane.p-cli { grid-column: span 6; }
   .pane.p-cli .log { white-space: pre; overflow-wrap: normal; }   /* a tabela do listar não quebra: rola */
   .pane.p-gw { order: 1; } .pane.p-cli { order: 2; } .pane.p-n1 { order: 3; } .pane.p-n2 { order: 4; } .pane.p-n3 { order: 5; } .pane.p-n4 { order: 6; } .pane.p-n5 { order: 7; } .pane.p-x { order: 9; grid-column: span 5; }
   .terminais.tem-foco > .pane:not(.foco) { display: none; }
   .terminais.tem-foco > .pane.foco { grid-column: 1 / -1; grid-row: 1 / -1; }
-  .ph { display: flex; align-items: center; gap: 6px; padding: 3px 6px 3px 9px; background: var(--term-bar); border-bottom: 1px solid var(--term-line); font-size: 13px; color: #c3d0e4; }
+  .ph { display: flex; align-items: center; gap: 6px; padding: 3px 6px 3px 9px; background: var(--term-bar); border-bottom: 1px solid var(--term-line); font-size: 13px; color: #c9cfda; }
   .ph .tit { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .ph .dot { width: 8px; height: 8px; border-radius: 50%; background: #3a4a68; flex: none; }
   .ph .dot.on { background: #4cd964; box-shadow: 0 0 6px #4cd964aa; }
   .ph .dot.boot { background: #f2d36b; }
-  .ph button { background: transparent; border: 1px solid #34507a; color: #c3d0e4; border-radius: 3px; font-size: 12px; padding: 1px 6px; cursor: pointer; }
-  .ph button:hover { border-color: #E07A1F; color: #fff; }
+  .ph button { background: transparent; border: 1px solid #424955; color: #c9cfda; border-radius: 3px; font-size: 12px; padding: 1px 6px; cursor: pointer; }
+  .ph button:hover { border-color: #fff; color: #fff; }
   .log { flex: 1; min-height: 0; overflow: auto; padding: 6px 9px; font-family: var(--mono); font-size: 12.5px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--term-fg); }
   .log div { min-height: 1.45em; }
   .log .u { color: var(--t-udp); } .log .g { color: var(--t-grpc); } .log .m { color: var(--t-mc); } .log .t { color: var(--t-tcp); }
   .log .ev { color: var(--t-ev); font-weight: 700; } .log .er { color: var(--t-err); } .log .av { color: var(--t-warn); }
   .log .dim { color: var(--term-dim); } .log .eco { color: #fff; }
-  .entrada { display: flex; align-items: center; gap: 6px; border-top: 1px solid var(--term-line); padding: 3px 9px; font-family: var(--mono); font-size: 12.5px; background: #0c1b30; }
-  .entrada .pr { color: #ffb067; white-space: pre; }
+  .entrada { display: flex; align-items: center; gap: 6px; border-top: 1px solid var(--term-line); padding: 3px 9px; font-family: var(--mono); font-size: 12.5px; background: #111419; }
+  .entrada .pr { color: #7fd6a4; white-space: pre; }
   .entrada input { flex: 1; min-width: 0; background: transparent; border: 0; outline: 0; color: #fff; font-family: var(--mono); font-size: 12.5px; padding: 3px 0; }
-  .entrada:focus-within { box-shadow: inset 0 0 0 1px #E07A1F; }
-  .sug { display: block; width: 100%; text-align: left; background: #14294a; border: 0; border-top: 1px solid var(--term-line); color: #ffd2a6; font-family: var(--mono); font-size: 12px; padding: 4px 9px; cursor: pointer; }
-  .sug:hover { background: #1b3560; color: #fff; }
-  .toast { position: fixed; left: 50%; bottom: calc(14px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--navy); color: #fff; border: 1px solid var(--accent); border-radius: 3px; padding: 8px 14px; font-size: 14px; z-index: 20; max-width: min(92vw, 520px); opacity: 0; pointer-events: none; transition: opacity .2s; }
+  .entrada:focus-within { box-shadow: inset 0 0 0 1px #9ab7e6; }
+  .sug { display: block; width: 100%; text-align: left; background: #181c23; border: 0; border-top: 1px solid var(--term-line); color: #bcd0ee; font-family: var(--mono); font-size: 12px; padding: 4px 9px; cursor: pointer; }
+  .sug:hover { background: #222833; color: #fff; }
+  .toast { position: fixed; left: 50%; bottom: calc(14px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--navy); color: var(--bg); border: 1px solid var(--navy); border-radius: 3px; padding: 8px 14px; font-size: 14px; z-index: 20; max-width: min(92vw, 520px); opacity: 0; pointer-events: none; transition: opacity .2s; }
   .toast.on { opacity: 1; }
 
   @media (max-width: 1100px) {
@@ -201,13 +203,12 @@
 <!-- 1 ─ Título -->
 <article class="slide titulo" id="slide-1" data-titulo="Título">
   <img class="logo" src="ufc_logo.png" alt="UFC">
+  <div class="inst">UNIVERSIDADE FEDERAL DO CEARÁ – UFC<br>CENTRO DE TECNOLOGIA<br>CURSO DE ENGENHARIA DE COMPUTAÇÃO</div>
   <h1>Gateway DCIM: monitoramento de data center</h1>
-  <div class="corpo-capa">
-  <p class="sub" style="font-size:clamp(17px,2vw,23px)">Sistemas distribuídos com multicast, UDP, gRPC e TCP, todas as mensagens em Protocol Buffers.</p>
-  <p style="margin-top:22px"><b>Antonio Marcos Justino Carneiro</b> · matrícula <b>511911</b><br>
-    <span class="peq">TI0151 – Sistemas Distribuídos (2026.2) · Universidade Federal do Ceará · Professor: Paulo A. L. Rego · Outubro de 2026</span></p>
-  <p class="peq" style="max-width:70ch">Esta página reúne os slides e os sete terminais do sistema no mesmo lugar. Com o painel local ligado (<code>./rodar.sh Painel</code>) os terminais rodam o <b>Java real</b> deste computador; sem ele, rodam uma simulação no navegador com as mesmas mensagens, comandos e saídas. Use <b>← →</b> para trocar de slide e os botões <b>Experimente</b> para rodar comandos.</p>
-  </div>
+  <p class="sub">Sistemas distribuídos com multicast, UDP, gRPC e TCP, todas as mensagens em Protocol Buffers.</p>
+  <p class="autor"><b>Antonio Marcos Justino Carneiro</b> · matrícula <b>511911</b></p>
+  <p class="curso">TI0151 – Sistemas Distribuídos (2026.2) · Professor: Paulo A. L. Rego · Fortaleza, CE · 2026</p>
+  <p class="peq nota-capa">Esta página reúne os slides e os sete terminais do sistema no mesmo lugar. Com o painel local ligado (<code>./rodar.sh Painel</code>) os terminais rodam o <b>Java real</b> deste computador; sem ele, rodam uma simulação no navegador com as mesmas mensagens, comandos e saídas. Use <b>← →</b> para trocar de slide e os botões <b>Experimente</b> para rodar comandos.</p>
 </article>
 
 <!-- 2 ─ Domínio -->
