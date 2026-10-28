@@ -141,9 +141,10 @@ public class Gateway {
                         System.out.println("[udp] leitura sem fonte/grandeza descartada");
                         continue;
                     }
-                    cadastro.registrarLeitura(l, System.currentTimeMillis());
+                    String anomalia = cadastro.registrarLeitura(l, System.currentTimeMillis());
                     System.out.printf(Locale.ROOT, "[udp] %s %s = %.1f%s%n", l.getFonteId(), l.getGrandeza(),
                             l.getValor(), l.getEvento() ? "   <<< EVENTO" : "");
+                    if (anomalia != null) System.out.println("[udp] " + l.getFonteId() + ": " + anomalia);
                 } catch (Exception e) {
                     System.out.println("[udp] datagrama inválido descartado");
                 }

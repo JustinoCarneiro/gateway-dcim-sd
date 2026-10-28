@@ -73,6 +73,8 @@ public class Cliente {
             }
         } catch (java.net.ConnectException e) {
             System.out.println("não consegui conectar em " + host + ":" + porta + " (o gateway está no ar?)");
+        } catch (java.io.IOException e) {
+            System.out.println("conexão com o gateway encerrada (" + e.getClass().getSimpleName() + ")");
         }
     }
 
@@ -81,15 +83,20 @@ public class Cliente {
             case "listar":
                 return PedidoCliente.newBuilder().setListar(ListarFontesRequest.getDefaultInstance()).build();
             case "ligar":
-                return comando(p, 2, ConfigurarRequest.newBuilder().setLigado(true));
+                exigir(p, 2);
+                return comando(p, ConfigurarRequest.newBuilder().setLigado(true));
             case "desligar":
-                return comando(p, 2, ConfigurarRequest.newBuilder().setLigado(false));
+                exigir(p, 2);
+                return comando(p, ConfigurarRequest.newBuilder().setLigado(false));
             case "setpoint":
-                return comando(p, 3, ConfigurarRequest.newBuilder().setSetpointC(numero(p[2])));
+                exigir(p, 3);   // antes de ler p[2]: sem o argumento, p[2] não existe
+                return comando(p, ConfigurarRequest.newBuilder().setSetpointC(numero(p[2])));
             case "ventilador":
-                return comando(p, 3, ConfigurarRequest.newBuilder().setVentiladorPct((int) numero(p[2])));
+                exigir(p, 3);
+                return comando(p, ConfigurarRequest.newBuilder().setVentiladorPct((int) numero(p[2])));
             case "intervalo":
-                return comando(p, 3, ConfigurarRequest.newBuilder().setIntervaloMs((int) numero(p[2])));
+                exigir(p, 3);
+                return comando(p, ConfigurarRequest.newBuilder().setIntervaloMs((int) numero(p[2])));
             case "consulta": {
                 if (p.length < 2) throw new IllegalArgumentException("use: consulta media|rack|pico [janela_s]");
                 TipoConsulta tipo = switch (p[1]) {
@@ -107,8 +114,11 @@ public class Cliente {
         }
     }
 
-    private static PedidoCliente comando(String[] p, int minimo, ConfigurarRequest.Builder cfg) {
+    private static void exigir(String[] p, int minimo) {
         if (p.length < minimo) throw new IllegalArgumentException("faltam argumentos (digite ajuda)");
+    }
+
+    private static PedidoCliente comando(String[] p, ConfigurarRequest.Builder cfg) {
         return PedidoCliente.newBuilder()
                 .setComando(ComandoRequest.newBuilder().setFonteId(p[1]).setConfig(cfg)).build();
     }

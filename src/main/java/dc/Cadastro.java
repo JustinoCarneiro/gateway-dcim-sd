@@ -34,6 +34,7 @@ public class Cadastro {
     private final Map<String, Long> ultimaLeitura = new HashMap<>();
     private final Map<String, Integer> intervaloMs = new HashMap<>();
     private final Map<String, EstadoAr> estadoAr = new HashMap<>();
+    private final Map<String, Long> ultimoSeq = new HashMap<>();
     private final Deque<Registro> historico = new ArrayDeque<>();   // em ordem de chegada
 
     /** @return true se a fonte ainda não era conhecida */
@@ -46,7 +47,23 @@ public class Cadastro {
         return nova;
     }
 
-    public synchronized void registrarLeitura(Leitura l, long recebidoEm) {
+    /**
+     * Guarda a leitura e confere a sequência da fonte (UDP pode perder, duplicar e reordenar).
+     * seq 0 é tratado como fonte que reiniciou: a contagem recomeça sem alarme.
+     *
+     * @return descrição da anomalia de sequência, ou null se a leitura veio na ordem esperada
+     */
+    public synchronized String registrarLeitura(Leitura l, long recebidoEm) {
+        String anomalia = null;
+        Long anterior = ultimoSeq.get(l.getFonteId());
+        if (anterior != null && l.getSeq() != 0) {
+            if (l.getSeq() == anterior) anomalia = "leitura duplicada (seq " + l.getSeq() + ")";
+            else if (l.getSeq() < anterior) anomalia = "leitura fora de ordem (seq " + l.getSeq() + " após " + anterior + ")";
+            else if (l.getSeq() > anterior + 1) anomalia = (l.getSeq() - anterior - 1) + " leitura(s) perdida(s)";
+        }
+        // leitura atrasada não faz a contagem andar para trás
+        if (anterior == null || l.getSeq() == 0 || l.getSeq() > anterior) ultimoSeq.put(l.getFonteId(), l.getSeq());
+
         historico.addLast(new Registro(l, recebidoEm));
         // a memória não pode crescer sem limite: descarta o que passou da retenção
         while (!historico.isEmpty() && historico.peekFirst().recebidoEm() < recebidoEm - Config.RETENCAO_MS) {
@@ -55,6 +72,7 @@ public class Cadastro {
         ultimaLeitura.put(l.getFonteId(), recebidoEm);
         if (l.getIntervaloMs() > 0) intervaloMs.put(l.getFonteId(), l.getIntervaloMs());
         if (l.hasEstadoAr()) estadoAr.put(l.getFonteId(), l.getEstadoAr());
+        return anomalia;
     }
 
     /** Guarda o estado devolvido por um comando gRPC bem-sucedido. */

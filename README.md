@@ -80,6 +80,19 @@ consulta media|rack|pico [janela_s]
 4. No terminal da PDU B, digitar `q` (pico). Depois: `consulta media 10`, `consulta rack 10`, `consulta pico 10`.
 5. **Falha:** encerrar o ar-condicionado (Ctrl+C). `setpoint ar-01 21` retorna `não respondeu (UNAVAILABLE)`. Em alguns segundos, `listar` mostra `ar-01 INATIVA`.
 
+## Versão navegável (slides + terminais)
+
+`docs/demo-online.html` reúne os 12 slides e os 7 terminais numa página só. Tem dois modos:
+
+- **Java real** (o que vale para a demonstração): a página controla os processos Java **deste computador**. Como o navegador não sobe processos, existe uma ponte local, a classe `Painel`:
+
+  ```bash
+  ./rodar.sh Painel          # na pasta do projeto; imprime o endereço e um token
+  ```
+
+  Abra **http://localhost:8099/**. A página já abre ligada ao Java real: "Subir tudo" (ou os comandos `./rodar.sh ...` digitados em cada terminal), os botões "Experimente" de cada slide e o Ctrl+C de cada terminal rodam os mesmos processos das seções acima. Segurança: o painel escuta só em 127.0.0.1, exige o token sorteado a cada execução, confere o cabeçalho Host e só sobe as 5 classes do projeto com argumentos filtrados.
+- **Simulação**: um modelo em JavaScript do sistema (mesmas mensagens, comandos e saídas; os bytes Protobuf conferem com os do Java), com controle de perda e duplicação de UDP. É o que aparece quando a página é aberta sem o painel, por exemplo no link público: https://justinocarneiro.github.io/gateway-dcim-sd/demo-online.html. Nessa página, "Java real" aceita o token do painel (campo ao lado do botão) e funciona em Chrome e Firefox; se o navegador bloquear (Safari), abra http://localhost:8099/ direto.
+
 ## Decisões de projeto
 
 - **Domínio:** data center (DCIM). Unidades: °C e W. Limiar de 27 °C = limite superior da faixa **recomendada** (18–27 °C, entrada de ar, classes A1–A4) do ASHRAE TC 9.9, *Thermal Guidelines for Data Processing Environments*, 5ª ed. (2021); a faixa **permitida** da classe A1 vai de 15 a 32 °C.
@@ -88,6 +101,7 @@ consulta media|rack|pico [janela_s]
 - **Enquadramento TCP:** `[4 bytes big-endian com o tamanho][Protobuf]`. Conteúdo inválido recebe resposta de erro e a conexão segue; tamanho fora do limite (1 MiB) fecha a conexão, porque o fluxo perdeu o alinhamento.
 - **Relógio:** as janelas das consultas usam a hora de **chegada** no gateway, não o timestamp da fonte (relógios de máquinas diferentes não são comparáveis).
 - **gRPC:** campos `optional` (ausente = não alterar), valores absolutos (comando **idempotente**: repetir é seguro), prazo de 3 s, erros por código de status.
+- **Sequência das leituras:** cada fonte numera as leituras (`seq`); o gateway registra no log perda (`N leitura(s) perdida(s)`), duplicação e reordenação. `seq 0` indica fonte reiniciada.
 - **Ar-condicionado desligado** continua enviando leituras com `ligado=false`: assim o gateway distingue "desligado por comando" de "caiu" (ausência de leituras).
 - **Inatividade:** fonte sem leituras por mais de 3 intervalos anunciados é marcada INATIVA e volta a ATIVA na próxima leitura. Não distingue fonte caída de rede caída.
 - **Consultas** (janela padrão 300 s): `media` = média das leituras dos sensores de rack; `rack` = rack com maior **média** de temperatura; `pico` = maior leitura de potência e a PDU que a gerou. Sem leituras na janela: "sem dados".

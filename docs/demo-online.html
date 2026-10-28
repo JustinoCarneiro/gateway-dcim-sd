@@ -1,0 +1,1477 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>Gateway DCIM ao vivo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<style>
+  /* Layout: palco de slides em cima, doca de 7 terminais embaixo (divisor arrastável).
+     Cores seguem o código de protocolo dos slides: TCP azul-marinho, gRPC azul, UDP vermelho, multicast verde. */
+  :root {
+    --bg: #f3f6f9; --surface: #ffffff; --ink: #14213d; --muted: #566074; --line: #d3dae3; --panel: #e9eef4;
+    --accent: #0b7285; --accent-ink: #ffffff;
+    --tcp: #14213d; --grpc: #1971c2; --udp: #e03131; --mc: #2f9e44; --warn: #c2410c; --ok: #2b8a3e;
+    --gw-fill: #e3f4f1; --grpc-fill: #e7f0fb; --udp-fill: #fdecec;
+    --code-bg: #0f1b2d; --code-fg: #e6edf6; --code-c: #8fa3bd; --code-k: #7cc4ff; --code-t: #ffd479;
+    --term-bg: #08101d; --term-fg: #dbe5f2; --term-dim: #7b8aa3; --term-line: #1f2c44; --term-bar: #101a2d;
+    --t-udp: #ff8585; --t-grpc: #74b8ff; --t-mc: #67d982; --t-tcp: #a5b9dc; --t-ev: #ffb454; --t-err: #ff7676; --t-warn: #f2d36b;
+    --font: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+    --mono: "IBM Plex Mono", "DejaVu Sans Mono", "Liberation Mono", monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0c1320; --surface: #131d30; --ink: #e6edf6; --muted: #9fb0c6; --line: #263450; --panel: #1a2740;
+      --accent: #3bc9db; --accent-ink: #06222a;
+      --tcp: #a5b9dc; --grpc: #5aa2f0; --udp: #ff6b6b; --mc: #51cf66; --warn: #ff9f5a; --ok: #69db7c;
+      --gw-fill: #0e3a40; --grpc-fill: #14294a; --udp-fill: #3b1d24;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0c1320; --surface: #131d30; --ink: #e6edf6; --muted: #9fb0c6; --line: #263450; --panel: #1a2740;
+    --accent: #3bc9db; --accent-ink: #06222a;
+    --tcp: #a5b9dc; --grpc: #5aa2f0; --udp: #ff6b6b; --mc: #51cf66; --warn: #ff9f5a; --ok: #69db7c;
+    --gw-fill: #0e3a40; --grpc-fill: #14294a; --udp-fill: #3b1d24;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font); font-size: 15px; line-height: 1.45;
+    display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+    padding-left: max(0px, env(safe-area-inset-left, 0px)); padding-right: max(0px, env(safe-area-inset-right, 0px));
+  }
+  .gutter { padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+  body { padding-left: 0; padding-right: 0; }
+  a { color: var(--accent); }
+  code { font-family: var(--mono); font-size: 0.88em; background: var(--panel); padding: 1px 6px; border-radius: 4px; }
+  button, select, input { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* ---------- barra superior ---------- */
+  .topo { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; padding-block: 8px; background: var(--surface); border-bottom: 1px solid var(--line); }
+  .marca { font-weight: 700; letter-spacing: -0.01em; }
+  .marca small { font-weight: 400; color: var(--muted); margin-left: 8px; }
+  .nav { display: flex; align-items: center; gap: 6px; margin-left: auto; min-width: 0; }
+  .nav select { max-width: min(46vw, 330px); background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; }
+  .btn { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 5px 11px; cursor: pointer; }
+  .btn:hover { border-color: var(--accent); }
+  .btn.pri { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+  .btn:disabled { opacity: .45; cursor: default; }
+
+  /* ---------- palco (slides) ---------- */
+  .palco { overflow: auto; min-height: 0; padding-block: 22px 26px; }
+  .slide { max-width: 1060px; margin: 0 auto; }
+  .slide h1 { font-size: clamp(24px, 3vw, 36px); line-height: 1.15; margin: 0 0 6px; letter-spacing: -0.015em; text-wrap: balance; }
+  .slide .sub { font-size: clamp(15px, 1.5vw, 18px); color: var(--muted); margin: 0 0 18px; max-width: 78ch; }
+  .slide p, .slide li { font-size: clamp(15px, 1.35vw, 17px); line-height: 1.5; }
+  .slide ul { margin: 0; padding-left: 22px; } .slide li { margin-bottom: 7px; }
+  .slide.titulo { padding-top: 4vh; } .slide.titulo h1 { font-size: clamp(32px, 5vw, 54px); }
+  .tag { display: inline-block; font-size: 12px; font-weight: 600; color: #fff; padding: 2px 10px; border-radius: 999px; vertical-align: middle; margin-left: 8px; letter-spacing: .02em; }
+  .t-tcp { background: #14213d; } .t-grpc { background: #1971c2; } .t-udp { background: #e03131; } .t-mc { background: #2f9e44; }
+  :root[data-theme="dark"] .t-tcp { background: #4a6190; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .t-tcp { background: #4a6190; } }
+  .cols { display: flex; flex-wrap: wrap; gap: 20px 28px; align-items: flex-start; }
+  .cols > * { flex: 1 1 340px; min-width: 0; }
+  .cols > pre { flex: 1.2 1 380px; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px 18px; }
+  .card h3 { margin: 0 0 6px; font-size: 17px; }
+  .card p { margin: 0; font-size: 15px; }
+  pre { background: var(--code-bg); color: var(--code-fg); font-family: var(--mono); font-size: 13px; line-height: 1.5; padding: 14px 16px; border-radius: 8px; margin: 0; overflow-x: auto; }
+  pre .c { color: var(--code-c); } pre .k { color: var(--code-k); } pre .t { color: var(--code-t); }
+  .rolagem { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 14.5px; background: var(--surface); }
+  th { text-align: left; background: var(--panel); font-weight: 600; padding: 8px 12px; border-bottom: 2px solid var(--line); }
+  td { padding: 8px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  .peq { font-size: 14px; color: var(--muted); }
+  .ok-l { list-style: none; margin-left: -22px; color: var(--ok); font-weight: 600; }
+  svg.diagrama { width: 100%; height: auto; max-height: 52vh; display: block; }
+  svg .tx { fill: var(--ink); } svg .tm { fill: var(--muted); }
+  svg .nd { fill: var(--panel); stroke: var(--tcp); stroke-width: 2; transition: opacity .3s; }
+  svg .nd-gw { fill: var(--gw-fill); stroke: var(--accent); stroke-width: 2.5; }
+  svg .nd-ar { fill: var(--grpc-fill); stroke: var(--grpc); stroke-width: 2.5; }
+  svg .nd-fo { fill: var(--udp-fill); stroke: var(--udp); }
+  svg g.no.off { opacity: .38; }
+  svg .ln { transition: opacity .25s, stroke-width .25s; }
+  svg .ln.flash { opacity: 1 !important; stroke-width: 5; }
+  .s-tcp { stroke: var(--tcp); fill: none; } .s-grpc { stroke: var(--grpc); fill: none; } .s-udp { stroke: var(--udp); fill: none; } .s-mc { stroke: var(--mc); fill: none; }
+  .f-tcp { fill: var(--tcp); } .f-grpc { fill: var(--grpc); } .f-udp { fill: var(--udp); } .f-mc { fill: var(--mc); }
+
+  /* ---------- faixa "Experimente" (botões do slide atual) ---------- */
+  .exp { display: flex; align-items: center; gap: 12px; padding-block: 6px; background: var(--surface); border-bottom: 1px solid var(--line); min-width: 0; }
+  .exp h4 { margin: 0; flex: none; font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--accent); }
+  .exp .chips { display: flex; gap: 8px; overflow-x: auto; min-width: 0; padding-block: 2px; }
+  .chip { flex: none; white-space: nowrap; border: 1px solid var(--line); background: var(--panel); border-radius: 6px; padding: 4px 10px; cursor: pointer; font-size: 13.5px; }
+  .chip:hover { border-color: var(--accent); }
+  .chip code { background: transparent; padding: 0; }
+  .chip small { color: var(--muted); margin-left: 6px; }
+
+  /* ---------- divisor e doca ---------- */
+  .divisor { height: 9px; background: var(--line); cursor: row-resize; position: relative; touch-action: none; }
+  .divisor::after { content: ""; position: absolute; left: 50%; top: 3px; width: 44px; height: 3px; margin-left: -22px; border-radius: 2px; background: var(--muted); opacity: .7; }
+  .dock { height: var(--dock-h, 44vh); display: flex; flex-direction: column; min-height: 0; background: var(--term-bar); color: var(--term-fg); }
+  .barra { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding-block: 7px; border-bottom: 1px solid var(--term-line); font-size: 13px; }
+  .barra .btn { background: #18243b; border-color: #2a3a58; color: var(--term-fg); padding: 3px 10px; font-size: 13px; }
+  .barra .btn:hover { border-color: #5fb6c4; }
+  .barra .btn.pri { background: #1596ad; border-color: #1596ad; color: #04161b; }
+  .barra label { display: inline-flex; align-items: center; gap: 6px; color: #b6c4d9; }
+  .barra input[type=range] { width: 92px; accent-color: #3bc9db; }
+  .barra select { background: #18243b; border: 1px solid #2a3a58; border-radius: 6px; padding: 2px 6px; color: var(--term-fg); }
+  .barra output { min-width: 3ch; font-family: var(--mono); color: var(--term-fg); }
+  .barra .nota { flex: 1 1 auto; text-align: right; color: var(--term-dim); font-size: 12px; }
+  .barra .nota a { color: #7fd6e4; }
+  .terminais { flex: 1; min-height: 0; display: grid; gap: 6px; padding: 6px max(8px, env(safe-area-inset-left, 0px)) 8px; grid-template-columns: repeat(10, minmax(0, 1fr)); grid-template-rows: minmax(0, 1.25fr) minmax(0, 1fr); grid-auto-rows: minmax(130px, .8fr); overflow: auto; position: relative; }
+  .pane { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--term-bg); border: 1px solid var(--term-line); border-radius: 8px; overflow: hidden; grid-column: span 2; }
+  .pane.p-gw { grid-column: span 4; } .pane.p-cli { grid-column: span 6; }
+  .pane.p-cli .log { white-space: pre; overflow-wrap: normal; }   /* a tabela do listar não quebra: rola */
+  .pane.p-gw { order: 1; } .pane.p-cli { order: 2; } .pane.p-n1 { order: 3; } .pane.p-n2 { order: 4; } .pane.p-n3 { order: 5; } .pane.p-n4 { order: 6; } .pane.p-n5 { order: 7; } .pane.p-x { order: 9; grid-column: span 5; }
+  .terminais.tem-foco > .pane:not(.foco) { display: none; }
+  .terminais.tem-foco > .pane.foco { grid-column: 1 / -1; grid-row: 1 / -1; }
+  .ph { display: flex; align-items: center; gap: 6px; padding: 3px 6px 3px 9px; background: var(--term-bar); border-bottom: 1px solid var(--term-line); font-size: 12px; color: #b6c4d9; }
+  .ph .tit { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ph .dot { width: 8px; height: 8px; border-radius: 50%; background: #3a4a68; flex: none; }
+  .ph .dot.on { background: #4cd964; box-shadow: 0 0 6px #4cd964aa; }
+  .ph .dot.boot { background: #f2d36b; }
+  .ph button { background: transparent; border: 1px solid #2a3a58; color: #b6c4d9; border-radius: 4px; font-size: 11px; padding: 1px 6px; cursor: pointer; }
+  .ph button:hover { border-color: #5fb6c4; color: #fff; }
+  .log { flex: 1; min-height: 0; overflow: auto; padding: 6px 9px; font-family: var(--mono); font-size: 12px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--term-fg); }
+  .log div { min-height: 1.45em; }
+  .log .u { color: var(--t-udp); } .log .g { color: var(--t-grpc); } .log .m { color: var(--t-mc); } .log .t { color: var(--t-tcp); }
+  .log .ev { color: var(--t-ev); font-weight: 500; } .log .er { color: var(--t-err); } .log .av { color: var(--t-warn); }
+  .log .dim { color: var(--term-dim); } .log .eco { color: #fff; }
+  .entrada { display: flex; align-items: center; gap: 6px; border-top: 1px solid var(--term-line); padding: 3px 9px; font-family: var(--mono); font-size: 12px; background: #0b1424; }
+  .entrada .pr { color: #4cd9c0; white-space: pre; }
+  .entrada input { flex: 1; min-width: 0; background: transparent; border: 0; outline: 0; color: #fff; font-family: var(--mono); font-size: 12px; padding: 3px 0; }
+  .entrada:focus-within { box-shadow: inset 0 0 0 1px #3bc9db; }
+  .sug { display: block; width: 100%; text-align: left; background: #12203a; border: 0; border-top: 1px solid var(--term-line); color: #8fd4e0; font-family: var(--mono); font-size: 11.5px; padding: 4px 9px; cursor: pointer; }
+  .sug:hover { background: #17294a; color: #fff; }
+  .modo { display: inline-flex; }
+  .modo .btn:first-child { border-radius: 6px 0 0 6px; } .modo .btn:last-child { border-radius: 0 6px 6px 0; margin-left: -1px; }
+  .barra .modo .btn[aria-pressed="true"] { background: #1596ad; border-color: #1596ad; color: #04161b; font-weight: 600; }
+  #r-box { display: inline-flex; gap: 6px; } #r-box[hidden] { display: none; }
+  #r-box input { background: #18243b; border: 1px solid #2a3a58; border-radius: 6px; padding: 2px 6px; color: var(--term-fg); font-family: var(--mono); font-size: 12px; }
+  #r-msg { font-size: 12px; color: #8fd4e0; }
+  .barra :disabled { opacity: .45; cursor: not-allowed; }
+  .toast { position: fixed; left: 50%; bottom: calc(14px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: #0b1424; color: #fff; border: 1px solid #3bc9db; border-radius: 8px; padding: 8px 14px; font-size: 13px; z-index: 20; max-width: min(92vw, 520px); opacity: 0; pointer-events: none; transition: opacity .2s; }
+  .toast.on { opacity: 1; }
+
+  @media (max-width: 1100px) {
+    .terminais { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: none; grid-auto-rows: minmax(190px, 1fr); }
+    .pane, .pane.p-x { grid-column: span 1; } .pane.p-gw, .pane.p-cli { grid-column: span 2; }
+  }
+  @media (max-width: 760px) {
+    html, body { height: auto; }
+    body { display: block; }
+    .palco { overflow: visible; }
+    .divisor { display: none; }
+    .dock { height: auto; }
+    .terminais { display: flex; flex-direction: column; overflow: visible; }
+    .pane { height: 270px; flex: none; }
+    .nav { margin-left: 0; width: 100%; } .nav select { flex: 1; max-width: none; }
+  }
+  @media (prefers-reduced-motion: reduce) { svg .ln, svg .nd, .toast { transition: none; } }
+</style>
+</head>
+<body>
+
+<header class="topo gutter">
+  <div class="marca">Gateway DCIM <small>TI0151 · Sistemas Distribuídos</small></div>
+  <nav class="nav" aria-label="Navegação dos slides">
+    <button class="btn" id="ant" aria-label="Slide anterior">◀</button>
+    <select id="lista" aria-label="Ir para o slide"></select>
+    <button class="btn" id="prox" aria-label="Próximo slide">▶</button>
+  </nav>
+</header>
+<div class="exp gutter" id="exp" hidden><h4>Experimente</h4><div class="chips" id="chips"></div></div>
+
+<main class="palco gutter" id="palco" tabindex="-1">
+
+<!-- 1 ─ Título -->
+<article class="slide titulo" id="slide-1" data-titulo="Título">
+  <h1>Gateway DCIM:<br>monitoramento de data center</h1>
+  <p class="sub">Sistemas distribuídos com multicast, UDP, gRPC e TCP, todas as mensagens em Protocol Buffers.</p>
+  <p style="margin-top:28px"><b>Antonio Marcos Justino Carneiro</b> · matrícula <b>511911</b><br>
+    <span class="peq">TI0151 Sistemas Distribuídos · Universidade Federal do Ceará · 2026.2 · Prof. Paulo A. L. Rego</span></p>
+  <p class="peq" style="max-width:70ch">Esta página reúne os slides e os sete terminais do sistema no mesmo lugar. Os terminais na parte de baixo rodam uma simulação no navegador, com as mesmas mensagens, comandos e saídas do programa em Java. Use <b>← →</b> para trocar de slide e os botões <b>Experimente</b> para rodar comandos.</p>
+</article>
+
+<!-- 2 ─ Domínio -->
+<article class="slide" id="slide-2" data-titulo="Domínio: data center" hidden>
+  <h1>Domínio: data center (DCIM)</h1>
+  <p class="sub">Um sistema de gerenciamento da infraestrutura acompanha temperatura, energia e refrigeração dos racks.</p>
+  <div class="cols">
+    <div class="card"><h3>Gateway</h3><p>Ponto central do DCIM: descobre as fontes, guarda as leituras, comanda o ar-condicionado e responde ao operador.</p></div>
+    <div class="card"><h3>Fontes</h3><p><b>Ar-condicionado</b> (controlável, gRPC)<br><b>Sensor de temperatura</b> por rack (evento ao passar do limiar)<br><b>PDU</b> (consumo em watts por rack)</p></div>
+    <div class="card"><h3>Cliente</h3><p>Linha de comando: lista fontes e estados, liga/desliga, ajusta setpoint e faz 3 consultas agregadas.</p></div>
+  </div>
+  <p style="margin-top:20px"><b>Limiar de alerta: 27 °C</b>, topo da faixa recomendada (18–27 °C) do ASHRAE TC 9.9, <i>Thermal Guidelines</i>, 5ª ed. (2021). A faixa permitida da classe A1 vai até 32 °C.</p>
+  <p class="peq">Unidades: °C e W · cada fonte é um processo separado · 5 fontes na demonstração (1 ar-condicionado, 2 sensores, 2 PDUs).</p>
+</article>
+
+<!-- 3 ─ Arquitetura -->
+<article class="slide" id="slide-3" data-titulo="Arquitetura" hidden>
+  <h1>Arquitetura</h1>
+  <p class="sub" style="margin-bottom:6px">O gateway é servidor para o cliente e para as leituras, e cliente gRPC da fonte controlável. Aqui os nós acendem quando o processo está no ar e as linhas piscam a cada pacote.</p>
+  <svg class="diagrama" viewBox="0 0 1180 470" role="img" aria-label="Diagrama: cliente fala TCP com o gateway; o gateway fala gRPC com o ar-condicionado, recebe UDP das cinco fontes e envia multicast para descobri-las">
+    <defs>
+      <marker id="aT" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="18" markerHeight="18" orient="auto-start-reverse"><path class="f-tcp" d="M0,0 L10,5 L0,10 z"/></marker>
+      <marker id="aG" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="18" markerHeight="18" orient="auto-start-reverse"><path class="f-grpc" d="M0,0 L10,5 L0,10 z"/></marker>
+      <marker id="aU" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="18" markerHeight="18" orient="auto-start-reverse"><path class="f-udp" d="M0,0 L10,5 L0,10 z"/></marker>
+      <marker id="aM" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="18" markerHeight="18" orient="auto-start-reverse"><path class="f-mc" d="M0,0 L10,5 L0,10 z"/></marker>
+    </defs>
+    <g class="no off" id="n-cli">
+      <rect class="nd" x="490" y="6" width="200" height="54" rx="10"/>
+      <text class="tx" x="590" y="30" text-anchor="middle" font-size="20" font-weight="700">Cliente CLI</text>
+      <text class="tm" x="590" y="50" text-anchor="middle" font-size="14">processo separado</text>
+    </g>
+    <g class="no off" id="n-gw">
+      <rect class="nd nd-gw" x="440" y="150" width="300" height="80" rx="12"/>
+      <text class="tx" x="590" y="184" text-anchor="middle" font-size="24" font-weight="700">Gateway</text>
+      <text class="tm" x="590" y="210" text-anchor="middle" font-size="15">cadastro · histórico · consultas</text>
+    </g>
+    <line id="l-tcp" class="ln s-tcp" stroke-width="3" x1="590" y1="60" x2="590" y2="150" marker-start="url(#aT)" marker-end="url(#aT)" opacity=".6"/>
+    <text class="tx" x="604" y="100" font-size="16" font-weight="700">TCP :5009</text>
+    <text class="tm" x="604" y="120" font-size="14">PedidoCliente / RespostaCliente</text>
+    <g font-size="17" font-weight="700" text-anchor="middle">
+      <g class="no off" id="n-ar"><rect class="nd nd-ar" x="55" y="360" width="190" height="72" rx="10"/><text class="tx" x="150" y="388">Ar-condicionado</text><text class="tm" x="150" y="412" font-size="14" font-weight="400">controlável · gRPC :50051</text></g>
+      <g class="no off" id="n-tA"><rect class="nd nd-fo" x="275" y="360" width="190" height="72" rx="10"/><text class="tx" x="370" y="388">Sensor rack A</text><text class="tm" x="370" y="412" font-size="14" font-weight="400">contínuo · evento &gt; 27 °C</text></g>
+      <g class="no off" id="n-tB"><rect class="nd nd-fo" x="495" y="360" width="190" height="72" rx="10"/><text class="tx" x="590" y="388">Sensor rack B</text><text class="tm" x="590" y="412" font-size="14" font-weight="400">contínuo · evento &gt; 27 °C</text></g>
+      <g class="no off" id="n-pA"><rect class="nd nd-fo" x="715" y="360" width="190" height="72" rx="10"/><text class="tx" x="810" y="388">PDU rack A</text><text class="tm" x="810" y="412" font-size="14" font-weight="400">contínua · watts</text></g>
+      <g class="no off" id="n-pB"><rect class="nd nd-fo" x="935" y="360" width="190" height="72" rx="10"/><text class="tx" x="1030" y="388">PDU rack B</text><text class="tm" x="1030" y="412" font-size="14" font-weight="400">contínua · watts</text></g>
+    </g>
+    <path id="l-grpc" class="ln s-grpc" stroke-width="3" d="M440,190 C260,190 90,250 90,360" marker-end="url(#aG)" opacity=".6"/>
+    <text x="60" y="168" font-size="16" font-weight="700" class="f-grpc">gRPC · comandos e estado</text>
+    <g class="s-udp" stroke-width="2.4" stroke-dasharray="7 5" marker-end="url(#aU)">
+      <line id="l-u-ar" class="ln" x1="125" y1="360" x2="480" y2="230" opacity=".55"/>
+      <line id="l-u-tA" class="ln" x1="345" y1="360" x2="520" y2="230" opacity=".55"/>
+      <line id="l-u-tB" class="ln" x1="565" y1="360" x2="560" y2="230" opacity=".55"/>
+      <line id="l-u-pA" class="ln" x1="785" y1="360" x2="620" y2="230" opacity=".55"/>
+      <line id="l-u-pB" class="ln" x1="1005" y1="360" x2="660" y2="230" opacity=".55"/>
+    </g>
+    <text x="830" y="282" font-size="16" font-weight="700" class="f-udp">UDP :5008 · Leitura</text>
+    <g id="l-mc" class="ln s-mc" stroke-width="2.4" stroke-dasharray="2 6" stroke-linecap="round" opacity=".55">
+      <path d="M590,230 L590,325 L180,325 L180,360" marker-end="url(#aM)"/>
+      <path d="M590,325 L400,325 L400,360" marker-end="url(#aM)"/>
+      <path d="M590,325 L620,325 L620,360" marker-end="url(#aM)"/>
+      <path d="M590,325 L840,325 L840,360" marker-end="url(#aM)"/>
+      <path d="M590,325 L1060,325 L1060,360" marker-end="url(#aM)"/>
+    </g>
+    <text x="760" y="176" font-size="16" font-weight="700" class="f-mc">multicast 239.255.42.99:5007 (pedido)</text>
+    <text x="760" y="198" font-size="14" class="f-mc">a resposta de cada fonte volta por UDP unicast</text>
+    <g font-size="15">
+      <line class="s-tcp" x1="55" y1="458" x2="95" y2="458" stroke-width="3"/><text class="tx" x="102" y="463">TCP</text>
+      <line class="s-grpc" x1="170" y1="458" x2="210" y2="458" stroke-width="3"/><text class="tx" x="217" y="463">gRPC</text>
+      <line class="s-udp" x1="290" y1="458" x2="330" y2="458" stroke-width="2.4" stroke-dasharray="7 5"/><text class="tx" x="337" y="463">UDP</text>
+      <line class="s-mc" x1="405" y1="458" x2="445" y2="458" stroke-width="2.4" stroke-dasharray="2 6" stroke-linecap="round"/><text class="tx" x="452" y="463">UDP multicast</text>
+      <text class="tm" x="600" y="463">Todas as mensagens são serializadas com Protocol Buffers.</text>
+    </g>
+  </svg>
+</article>
+
+<!-- 4 ─ Tecnologias -->
+<article class="slide" id="slide-4" data-titulo="Linguagem e bibliotecas" hidden>
+  <h1>Linguagem, frameworks e bibliotecas</h1>
+  <p class="sub">Uma única linguagem, sem frameworks de aplicação: sockets da biblioteca padrão, Protobuf e gRPC.</p>
+  <div class="rolagem"><table>
+    <tr><th style="width:170px">Camada</th><th>Tecnologia</th></tr>
+    <tr><td>Linguagem</td><td>Java 21 (Temurin)</td></tr>
+    <tr><td>Build</td><td>Maven 3.8 · <code>protobuf-maven-plugin</code> 0.6.1 baixa o <code>protoc</code> e o plugin gRPC e gera o código a cada <code>mvn compile</code></td></tr>
+    <tr><td>Serialização</td><td>Protocol Buffers (proto3) · <code>protobuf-java</code> 3.25.5 · um único arquivo <code>datacenter.proto</code> compartilhado por todos os processos</td></tr>
+    <tr><td>Invocação remota</td><td>gRPC Java 1.68.0 · <code>grpc-netty-shaded</code>, <code>grpc-protobuf</code>, <code>grpc-stub</code></td></tr>
+    <tr><td>Sockets</td><td><code>java.net</code>: <code>MulticastSocket</code> e <code>DatagramSocket</code> (UDP), <code>ServerSocket</code> e <code>Socket</code> (TCP)</td></tr>
+    <tr><td>Concorrência</td><td>Threads de <code>java.lang</code> e <code>ScheduledExecutorService</code>; estado compartilhado com <code>synchronized</code> e <code>volatile</code></td></tr>
+  </table></div>
+  <p class="peq" style="margin-top:14px">Processos (classes com <code>main</code>): <code>Gateway</code>, <code>ArCondicionado</code>, <code>SensorTemperatura</code>, <code>Pdu</code>, <code>Cliente</code> · apoio: <code>Cadastro</code>, <code>DescobertaFonte</code>, <code>Quadro</code>, <code>Rede</code>, <code>Config</code></p>
+  <p class="peq">Código completo: <a href="https://github.com/JustinoCarneiro/gateway-dcim-sd" target="_blank" rel="noopener">github.com/JustinoCarneiro/gateway-dcim-sd</a></p>
+</article>
+
+<!-- 5 ─ Descoberta -->
+<article class="slide" id="slide-5" data-titulo="Descoberta (multicast)" hidden>
+  <h1>Descoberta <span class="tag t-mc">UDP multicast</span></h1>
+  <p class="sub">O gateway não conhece os IPs das fontes: pergunta ao grupo <code>239.255.42.99:5007</code>; cada fonte responde por unicast.</p>
+  <div class="cols">
+    <pre><span class="c">// gateway → grupo multicast</span>
+<span class="k">message</span> <span class="t">DescobertaSolicitacao</span> {
+  string gateway_ip         = 1;
+  uint32 gateway_porta_udp  = 2;
+  uint32 nonce              = 3;
+}
+
+<span class="c">// fonte → gateway (unicast)</span>
+<span class="k">message</span> <span class="t">DescobertaResposta</span> {
+  string fonte_id    = 1;
+  TipoFonte tipo     = 2;
+  string ip          = 3;
+  uint32 porta       = 4;  <span class="c">// gRPC (0 = sem)</span>
+  bool controlavel   = 5;
+  string rack        = 6;
+  uint32 intervalo_ms = 7;
+  <span class="k">optional</span> EstadoAr estado_inicial = 8;
+  uint32 nonce       = 9;
+}</pre>
+    <div>
+      <ul>
+        <li>Ao iniciar, o gateway envia o pedido; <b>repete a cada 30 s</b> para achar fontes que subiram depois ou perderam o pedido (UDP).</li>
+        <li>A <b>solicitação leva o IP e a porta UDP do gateway</b>: a fonte aprende para onde mandar as leituras, sem configuração.</li>
+        <li>A resposta vai ao endereço de origem do pedido. O <b>nonce</b> descarta respostas de rodadas anteriores.</li>
+        <li>A resposta informa tipo, IP, porta (a do gRPC, nas controláveis) e o estado inicial.</li>
+        <li>Socket de descoberta separado do de leituras: o datagrama Protobuf não traz o tipo da mensagem.</li>
+      </ul>
+    </div>
+  </div>
+</article>
+
+<!-- 6 ─ Leituras -->
+<article class="slide" id="slide-6" data-titulo="Leituras (UDP)" hidden>
+  <h1>Leituras <span class="tag t-udp">UDP</span></h1>
+  <p class="sub">Um datagrama = uma mensagem <code>Leitura</code>, enviada à porta 5008 do gateway.</p>
+  <div class="cols">
+    <pre><span class="k">message</span> <span class="t">Leitura</span> {
+  string fonte_id      = 1;
+  TipoFonte tipo       = 2;
+  string rack          = 3;
+  Grandeza grandeza    = 4;  <span class="c">// °C ou W</span>
+  double valor         = 5;
+  int64 timestamp_ms   = 6;
+  bool evento          = 7;  <span class="c">// envio imediato</span>
+  uint32 intervalo_ms  = 8;
+  uint64 seq           = 9;
+  <span class="k">optional</span> EstadoAr estado_ar = 10;
+}</pre>
+    <div>
+      <ul>
+        <li><b>Periódico:</b> a cada 2 s (intervalo anunciado).</li>
+        <li><b>Evento imediato:</b> o sensor envia na hora ao <b>cruzar</b> 27 °C, subindo ou descendo (<code>evento = true</code>), sem repetir enquanto permanece acima.</li>
+        <li><code>intervalo_ms</code> alimenta o critério de inatividade. O gateway confere o <code>seq</code> de cada fonte e registra <b>perda, duplicação e reordenação</b> (<code>seq 0</code> = fonte reiniciou).</li>
+        <li>O ar-condicionado anexa o <code>estado_ar</code>; <b>desligado, continua enviando</b> com <code>ligado = false</code>: ausência de leituras significa falha.</li>
+        <li>UDP porque as leituras são frequentes e a perda de uma é tolerável.</li>
+        <li>O gateway usa a <b>hora de chegada</b>, não o <code>timestamp_ms</code> da fonte (relógios diferentes).</li>
+      </ul>
+    </div>
+  </div>
+</article>
+
+<!-- 7 ─ gRPC -->
+<article class="slide" id="slide-7" data-titulo="Serviço gRPC" hidden>
+  <h1>Serviço gRPC do ar-condicionado <span class="tag t-grpc">gRPC</span></h1>
+  <p class="sub">A fonte controlável é o servidor; o gateway é o cliente. Definição em <code>datacenter.proto</code>.</p>
+  <div class="cols">
+    <pre><span class="k">service</span> <span class="t">ArCondicionado</span> {
+  <span class="k">rpc</span> Configurar(ConfigurarRequest) <span class="k">returns</span> (EstadoAr);
+  <span class="k">rpc</span> ObterEstado(Vazio)           <span class="k">returns</span> (EstadoAr);
+}
+
+<span class="k">message</span> <span class="t">ConfigurarRequest</span> {
+  <span class="k">optional</span> bool   ligado         = 1;
+  <span class="k">optional</span> double setpoint_c     = 2;  <span class="c">// 10..35</span>
+  <span class="k">optional</span> uint32 ventilador_pct = 3;  <span class="c">// 0..100</span>
+  <span class="k">optional</span> uint32 intervalo_ms   = 4;  <span class="c">// 500..60000</span>
+}
+
+<span class="k">message</span> <span class="t">EstadoAr</span> {
+  bool ligado = 1;  double setpoint_c = 2;
+  uint32 ventilador_pct = 3;  uint32 intervalo_ms = 4;
+}</pre>
+    <div>
+      <ul>
+        <li><b>Atualização parcial:</b> <code>optional</code> distingue "ausente" de zero; ausente = não alterar.</li>
+        <li><b>Idempotente:</b> o comando carrega valores absolutos, então repetir após um timeout é seguro (diferente de "diminuir 2 graus").</li>
+        <li><b>Validação na fonte:</b> valor fora da faixa devolve <code>INVALID_ARGUMENT</code>; o gateway repassa a mensagem ao cliente.</li>
+        <li><b>Prazo de 3 s</b> por chamada (<code>withDeadlineAfter</code>); fonte fora do ar devolve <code>UNAVAILABLE</code>.</li>
+        <li>Stub bloqueante no gateway; o servidor usa o pool de threads do gRPC.</li>
+      </ul>
+    </div>
+  </div>
+</article>
+
+<!-- 8 ─ TCP -->
+<article class="slide" id="slide-8" data-titulo="Cliente e TCP" hidden>
+  <h1>Cliente ↔ gateway <span class="tag t-tcp">TCP</span></h1>
+  <p class="sub">TCP é um fluxo de bytes sem fronteiras de mensagem: cada mensagem Protobuf é enquadrada com seu tamanho.</p>
+  <svg class="diagrama" viewBox="0 0 1136 74" role="img" aria-label="Quadro TCP: 4 bytes de tamanho, corpo Protobuf, próximo quadro" style="max-height:74px">
+    <rect x="0" y="8" width="240" height="56" class="f-tcp"/><text x="120" y="42" text-anchor="middle" fill="#fff" font-size="19" font-weight="700">tamanho · 4 bytes</text>
+    <rect class="nd nd-gw" x="240" y="8" width="520" height="56"/><text class="tx" x="500" y="42" text-anchor="middle" font-size="19" font-weight="700">corpo: PedidoCliente ou RespostaCliente (Protobuf)</text>
+    <rect x="760" y="8" width="240" height="56" class="f-tcp"/><text x="880" y="42" text-anchor="middle" fill="#fff" font-size="19" font-weight="700">tamanho · 4 bytes</text>
+    <rect class="nd nd-gw" x="1000" y="8" width="136" height="56"/><text class="tx" x="1068" y="42" text-anchor="middle" font-size="19" font-weight="700">próxima…</text>
+  </svg>
+  <p class="peq" style="margin:6px 0 14px">Inteiro de 4 bytes em big-endian com o tamanho do corpo, seguido do corpo. Ligue "Mostrar bytes" na barra dos terminais para ver os quadros reais de cada comando.</p>
+  <div class="cols">
+    <pre><span class="k">message</span> <span class="t">PedidoCliente</span> {
+  <span class="k">oneof</span> pedido {
+    ListarFontesRequest listar   = 1;
+    ComandoRequest      comando  = 2;  <span class="c">// fonte_id + config</span>
+    ConsultaRequest     consulta = 3;  <span class="c">// tipo + janela_s</span>
+  }
+}
+<span class="k">message</span> <span class="t">RespostaCliente</span> {
+  bool   ok   = 1;
+  string erro = 2;
+  <span class="k">oneof</span> resposta {
+    ListarFontesResponse listar   = 3;
+    ComandoResponse      comando  = 4;
+    ConsultaResponse     consulta = 5;
+  }
+}</pre>
+    <div>
+      <ul>
+        <li>Leitura com <code>readInt()</code> e <code>readFully()</code>: um <code>read()</code> solto poderia devolver só parte do quadro.</li>
+        <li><b>Conteúdo inválido:</b> o fluxo segue alinhado; resposta <code>ok = false</code> e a conexão continua.</li>
+        <li><b>Tamanho absurdo</b> (limite 1 MiB): alinhamento perdido e risco de esgotar a memória; conexão fechada.</li>
+        <li>Uma thread por cliente conectado.</li>
+      </ul>
+    </div>
+  </div>
+</article>
+
+<!-- 9 ─ Consultas -->
+<article class="slide" id="slide-9" data-titulo="Três consultas agregadas" hidden>
+  <h1>Três consultas agregadas</h1>
+  <p class="sub">Calculadas pelo gateway sobre as leituras que chegaram nos últimos <i>N</i> segundos (janela padrão: 300 s).</p>
+  <div class="rolagem"><table>
+    <tr><th style="width:150px">Consulta</th><th>Definição</th><th style="width:250px">Resultado na demonstração gravada (janela 8 s)</th></tr>
+    <tr><td><code>consulta media</code></td><td>Média das leituras de temperatura dos sensores de rack (°C). O ar-condicionado não entra: mede o ar de saída.</td><td>25,35 °C (8 amostras)</td></tr>
+    <tr><td><code>consulta rack</code></td><td>Rack com a maior <b>média</b> de temperatura na janela e o valor dessa média.</td><td>28,72 °C, rack A (sensor A esquentado)</td></tr>
+    <tr><td><code>consulta pico</code></td><td>Maior leitura de potência das PDUs (W) e a PDU que a gerou.</td><td>6457,79 W, pdu-rack-B (pico simulado)</td></tr>
+  </table></div>
+  <ul style="margin-top:18px">
+    <li><b>Sem leituras na janela:</b> a resposta traz <code>tem_dados = false</code> e o cliente exibe "sem dados"; acontece se você consultar antes de as PDUs serem descobertas.</li>
+    <li>A <b>média por rack</b> mostra a tendência de aquecimento e evita alarme por uma amostra ruidosa; o <b>pico instantâneo</b> já é coberto pelo evento do sensor.</li>
+    <li>O histórico fica em memória, limitado a 1 hora.</li>
+  </ul>
+</article>
+
+<!-- 10 ─ Concorrência -->
+<article class="slide" id="slide-10" data-titulo="Concorrência" hidden>
+  <h1>Concorrência em cada processo</h1>
+  <p class="sub">Cada atividade fica bloqueada esperando (datagrama, comando, relógio); threads permitem esperar em paralelo.</p>
+  <div class="rolagem"><table>
+    <tr><th style="width:150px">Processo</th><th>Threads</th></tr>
+    <tr><td>Gateway</td><td><code>udp-leituras</code> (servidor UDP) · <code>tcp-clientes</code> (aceita conexões, <b>1 thread por cliente</b>) · agenda de descoberta (multicast a cada 30 s) · cliente gRPC chamado dentro da thread do cliente TCP</td></tr>
+    <tr><td>Ar-condicionado</td><td>principal (simula a temperatura e envia leituras) · <code>descoberta</code> (multicast) · <b>pool do gRPC</b> (atende <code>Configurar</code>)</td></tr>
+    <tr><td>Sensor / PDU</td><td>principal (amostragem e envio) · <code>descoberta</code> · <code>teclado</code> (apenas para forçar situações na demonstração)</td></tr>
+    <tr><td>Cliente</td><td>uma thread: envia o pedido e espera a resposta</td></tr>
+  </table></div>
+  <ul style="margin-top:16px">
+    <li><b>Estado compartilhado protegido:</b> <code>Cadastro</code> (fontes e histórico) com todos os métodos <code>synchronized</code>; estado do ar-condicionado também; <code>volatile</code> nos campos lidos entre threads (destino das leituras, base da temperatura simulada).</li>
+    <li>O comando via gRPC altera o estado na thread do gRPC, e a thread principal o lê no envio seguinte: sem isso haveria leitura de valor pela metade.</li>
+  </ul>
+</article>
+
+<!-- 11 ─ Falhas -->
+<article class="slide" id="slide-11" data-titulo="Falhas e robustez" hidden>
+  <h1>Falhas e robustez</h1>
+  <p class="sub">Comportamentos testados com os processos reais, inclusive encerrando o ar-condicionado durante a execução. Aqui você provoca cada um.</p>
+  <div class="rolagem"><table>
+    <tr><th style="width:36%">Situação</th><th>Comportamento</th></tr>
+    <tr><td>Fonte sem nenhuma leitura por mais de <b>3 intervalos</b></td><td><code>INATIVA</code> na listagem; volta a <code>ATIVA</code> na próxima leitura</td></tr>
+    <tr><td>Comando a fonte que caiu</td><td>gRPC <code>UNAVAILABLE</code>; o cliente recebe "fonte não respondeu"; o gateway segue</td></tr>
+    <tr><td>Comando fora da faixa (setpoint 99)</td><td><code>INVALID_ARGUMENT</code> da fonte, repassado ao cliente</td></tr>
+    <tr><td>Datagrama UDP inválido ou sem campos essenciais</td><td>Descartado (Protobuf aceita quase qualquer bytes: o conteúdo também é validado)</td></tr>
+    <tr><td>UDP perdido, duplicado ou fora de ordem</td><td>Detectado pelo <code>seq</code> e registrado no log do gateway; as leituras seguintes continuam valendo</td></tr>
+    <tr><td>TCP: conteúdo inválido / pedido vazio</td><td>Resposta <code>ok = false</code>; a conexão continua</td></tr>
+    <tr><td>TCP: tamanho declarado de 2 GiB</td><td>Conexão fechada; o gateway continua atendendo os demais</td></tr>
+    <tr><td>Fonte que sobe depois do gateway</td><td>Achada na rodada seguinte de descoberta (até 30 s)</td></tr>
+  </table></div>
+  <p style="margin-top:14px"><b>Limite conhecido:</b> o detector por tempo não distingue fonte caída de rede caída (sistema assíncrono); reduzir a tolerância detecta mais rápido, com mais falsos alarmes.</p>
+</article>
+
+<!-- 12 ─ Decisões -->
+<article class="slide" id="slide-12" data-titulo="Decisões e limitações" hidden>
+  <h1>Decisões, limitações e próximos passos</h1>
+  <p class="sub">Escopo mínimo do enunciado atendido; os extras ficaram de fora.</p>
+  <div class="cols">
+    <div class="card">
+      <h3>Requisitos atendidos</h3>
+      <ul>
+        <li class="ok-l">✓ Multicast ao iniciar, respostas com tipo, IP, porta e estado</li>
+        <li class="ok-l">✓ 3 tipos de fonte, processos separados; 1 controlável</li>
+        <li class="ok-l">✓ UDP periódico + envio imediato por limiar</li>
+        <li class="ok-l">✓ gRPC definido em <code>.proto</code> com estado de volta</li>
+        <li class="ok-l">✓ Cliente TCP/Protobuf com 3 consultas</li>
+        <li class="ok-l">✓ Falha de fonte demonstrada</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Limitações</h3>
+      <ul>
+        <li>Gateway é ponto único de falha; reiniciá-lo perde o histórico.</li>
+        <li>Sem TLS no gRPC nem autenticação no TCP.</li>
+        <li>Detecção de falha por tempo (falsos positivos em rede instável).</li>
+        <li>Multicast restrito à rede local (TTL 1).</li>
+      </ul>
+      <h3 style="margin-top:12px">Próximos passos (extras)</h3>
+      <ul>
+        <li>Persistência do histórico (arquivo ou banco).</li>
+        <li>Cliente com interface gráfica e séries temporais.</li>
+        <li>Fontes em outra linguagem, reaproveitando o mesmo <code>.proto</code>.</li>
+      </ul>
+    </div>
+  </div>
+</article>
+
+</main>
+
+<div class="divisor" id="divisor" role="separator" aria-orientation="horizontal" aria-label="Redimensionar os terminais" tabindex="0"></div>
+
+<section class="dock" id="dock" aria-label="Terminais">
+  <div class="barra gutter">
+    <button class="btn pri" id="b-subir">▶ Subir tudo</button>
+    <button class="btn" id="b-parar">■ Parar tudo</button>
+    <button class="btn" id="b-reset">↺ Reiniciar</button>
+    <label>Velocidade <select id="c-vel" aria-label="Velocidade da simulação"><option value="1">1×</option><option value="2">2×</option><option value="5">5×</option><option value="10">10×</option></select></label>
+    <label>Perda UDP <input type="range" id="c-perda" min="0" max="60" step="5" value="0"><output id="o-perda">0%</output></label>
+    <label>Duplicação <input type="range" id="c-dup" min="0" max="40" step="5" value="0"><output id="o-dup">0%</output></label>
+    <label><input type="checkbox" id="c-bytes"> Mostrar bytes</label>
+    <span class="modo" role="group" aria-label="Modo de execução"><button class="btn" id="m-sim" type="button" aria-pressed="true" title="Simulação no navegador">Simulação</button><button class="btn" id="m-real" type="button" aria-pressed="false" title="Roda os processos Java de verdade neste computador, pelo painel local (./rodar.sh Painel)">Java real</button></span>
+    <span id="r-box" hidden><input id="r-token" placeholder="token do painel" size="13" autocomplete="off" aria-label="Token mostrado pelo painel local"><input id="r-porta" value="8099" size="4" inputmode="numeric" aria-label="Porta do painel local"><button class="btn" id="r-ok" type="button">Conectar</button></span>
+    <span id="r-msg" role="status"></span>
+    <button class="btn" id="b-mais" title="Abre um terminal extra">+ terminal</button>
+    <button class="btn" id="b-alt" title="Alterna a altura dos terminais">⤢ Altura</button>
+    <div class="nota" id="nota" title="Mesmas mensagens, comandos e saídas do sistema Java; o tempo é simulado e nenhum pacote sai do seu computador.">Simulação do sistema Java no navegador · <a href="https://github.com/JustinoCarneiro/gateway-dcim-sd" target="_blank" rel="noopener">código real no GitHub</a></div>
+  </div>
+  <div class="terminais" id="terms"></div>
+</section>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script id="motor">
+/* ==========================================================================================
+   Motor da simulação. Sem DOM: roda também no Node (testes). Reproduz os algoritmos do Java:
+   Cadastro (critério de inatividade, consultas, conferência do seq), descoberta por rodadas com
+   nonce, sensores com evento no cruzamento do limiar, gRPC com INVALID_ARGUMENT/UNAVAILABLE,
+   quadro TCP e o cliente de linha de comando. O tempo é virtual (Sim.advance).
+   ========================================================================================== */
+(function (root) {
+'use strict';
+
+const CFG = { ip: '192.168.1.10', grupo: '239.255.42.99', mcPorta: 5007, udpPorta: 5008, tcpPorta: 5009, arPorta: 50051,
+  tolerancia: 3, janelaPadraoS: 300, retencaoMs: 3600000, janelaDescMs: 3000, descobertaS: 30, tamMaxQuadro: 1 << 20 };
+
+const f1 = v => v.toFixed(1);
+const hhmmss = ms => { const d = new Date(ms); return [d.getHours(), d.getMinutes(), d.getSeconds()].map(x => String(x).padStart(2, '0')).join(':'); };
+const rnd = (a, b) => a + Math.random() * (b - a);
+
+/* ---------- Protobuf: codificador mínimo, só para mostrar os bytes reais ---------- */
+const PB = (() => {
+  const varint = n => { const o = []; let v = BigInt(n); if (v < 0n) v += 1n << 64n;
+    while (v >= 0x80n) { o.push(Number(v & 0x7fn) | 0x80); v >>= 7n; } o.push(Number(v)); return o; };
+  const tag = (f, w) => varint((f << 3) | w);
+  const utf8 = s => [...new TextEncoder().encode(s)];
+  const str = (f, s) => s === '' ? [] : [...tag(f, 2), ...varint(utf8(s).length), ...utf8(s)];
+  const msg = (f, b) => [...tag(f, 2), ...varint(b.length), ...b];
+  const u = (f, n) => n === 0 ? [] : [...tag(f, 0), ...varint(n)];
+  const uSempre = (f, n) => [...tag(f, 0), ...varint(n)];            // campo optional: vai mesmo valendo zero
+  const dbl = (f, x, sempre) => { if (x === 0 && !sempre) return [];
+    const b = new Uint8Array(8); new DataView(b.buffer).setFloat64(0, x, true); return [...tag(f, 1), ...b]; };
+  const TIPO = { AR_CONDICIONADO: 1, SENSOR_TEMPERATURA: 2, PDU: 3 };
+  const GRANDEZA = { TEMPERATURA_C: 1, POTENCIA_W: 2 };
+  const CONSULTA = { TEMPERATURA_MEDIA: 1, RACK_MAIS_QUENTE: 2, PICO_ENERGIA: 3 };
+  const estadoAr = e => [...u(1, e.ligado ? 1 : 0), ...dbl(2, e.setpointC), ...u(3, e.ventiladorPct), ...u(4, e.intervaloMs)];
+  const config = c => [
+    ...(c.ligado !== undefined ? uSempre(1, c.ligado ? 1 : 0) : []),
+    ...(c.setpointC !== undefined ? dbl(2, c.setpointC, true) : []),
+    ...(c.ventiladorPct !== undefined ? uSempre(3, c.ventiladorPct) : []),
+    ...(c.intervaloMs !== undefined ? uSempre(4, c.intervaloMs) : [])];
+  const leitura = l => [...str(1, l.fonteId), ...u(2, TIPO[l.tipo]), ...str(3, l.rack), ...u(4, GRANDEZA[l.grandeza]),
+    ...dbl(5, l.valor), ...u(6, l.timestampMs), ...u(7, l.evento ? 1 : 0), ...u(8, l.intervaloMs), ...u(9, l.seq),
+    ...(l.estadoAr ? msg(10, estadoAr(l.estadoAr)) : [])];
+  const solicitacao = s => [...str(1, s.gatewayIp), ...u(2, s.gatewayPortaUdp), ...u(3, s.nonce)];
+  const pedido = p => p.tipo === 'listar' ? msg(1, [])
+    : p.tipo === 'comando' ? msg(2, [...str(1, p.comando.fonteId), ...msg(2, config(p.comando.config))])
+    : msg(3, [...u(1, CONSULTA[p.consulta.tipo]), ...u(2, p.consulta.janelaS)]);
+  const frame = body => [(body.length >>> 24) & 255, (body.length >>> 16) & 255, (body.length >>> 8) & 255, body.length & 255, ...body];
+  const hex = b => b.map(x => x.toString(16).padStart(2, '0')).join('');
+  const hexEsp = b => b.map(x => x.toString(16).padStart(2, '0')).join(' ');
+  return { leitura, solicitacao, pedido, frame, hex, hexEsp, estadoAr, config };
+})();
+
+function pedidoTexto(p) {
+  if (p.tipo === 'listar') return 'PedidoCliente { listar { } }';
+  if (p.tipo === 'consulta') return `PedidoCliente { consulta { tipo: ${p.consulta.tipo}${p.consulta.janelaS ? ' janela_s: ' + p.consulta.janelaS : ''} } }`;
+  const c = p.comando.config, cs = [];
+  if (c.ligado !== undefined) cs.push('ligado: ' + c.ligado);
+  if (c.setpointC !== undefined) cs.push('setpoint_c: ' + (Number.isInteger(c.setpointC) ? c.setpointC + '.0' : c.setpointC));
+  if (c.ventiladorPct !== undefined) cs.push('ventilador_pct: ' + c.ventiladorPct);
+  if (c.intervaloMs !== undefined) cs.push('intervalo_ms: ' + c.intervaloMs);
+  return `PedidoCliente { comando { fonte_id: "${p.comando.fonteId}" config { ${cs.join(' ')} } } }`;
+}
+
+/* ---------- Cadastro: espelho do Cadastro.java ---------- */
+class Cadastro {
+  constructor(sim) {
+    this.sim = sim; this.fontes = new Map(); this.descobertaEm = new Map(); this.ultimaLeitura = new Map();
+    this.intervaloMs = new Map(); this.estadoAr = new Map(); this.ultimoSeq = new Map(); this.historico = [];
+  }
+  registrarFonte(r) {
+    const nova = !this.fontes.has(r.fonteId);
+    this.fontes.set(r.fonteId, r);
+    if (nova) this.descobertaEm.set(r.fonteId, this.sim.now());
+    if (r.estadoInicial) this.estadoAr.set(r.fonteId, r.estadoInicial);
+    return nova;
+  }
+  registrarLeitura(l, recebidoEm) {
+    let anomalia = null;
+    const ant = this.ultimoSeq.get(l.fonteId);
+    if (ant !== undefined && l.seq !== 0) {
+      if (l.seq === ant) anomalia = `leitura duplicada (seq ${l.seq})`;
+      else if (l.seq < ant) anomalia = `leitura fora de ordem (seq ${l.seq} após ${ant})`;
+      else if (l.seq > ant + 1) anomalia = `${l.seq - ant - 1} leitura(s) perdida(s)`;
+    }
+    if (ant === undefined || l.seq === 0 || l.seq > ant) this.ultimoSeq.set(l.fonteId, l.seq);
+    this.historico.push({ l, recebidoEm });
+    let i = 0;
+    while (i < this.historico.length && this.historico[i].recebidoEm < recebidoEm - CFG.retencaoMs) i++;
+    if (i) this.historico.splice(0, i);
+    this.ultimaLeitura.set(l.fonteId, recebidoEm);
+    if (l.intervaloMs > 0) this.intervaloMs.set(l.fonteId, l.intervaloMs);
+    if (l.estadoAr) this.estadoAr.set(l.fonteId, l.estadoAr);
+    return anomalia;
+  }
+  atualizarEstadoAr(id, e) { this.estadoAr.set(id, e); }
+  fonte(id) { return this.fontes.get(id); }
+  static tempRack(l) { return l.tipo === 'SENSOR_TEMPERATURA' && l.grandeza === 'TEMPERATURA_C'; }
+  consultar(tipo, janelaS) {
+    const janela = janelaS > 0 ? janelaS : CFG.janelaPadraoS;
+    const desde = this.sim.now() - janela * 1000;
+    const r = { tipo, janelaS: janela, temDados: false, valor: 0, referencia: '', amostras: 0 };
+    if (tipo === 'TEMPERATURA_MEDIA') {
+      let soma = 0, n = 0;
+      for (const g of this.historico) if (g.recebidoEm >= desde && Cadastro.tempRack(g.l)) { soma += g.l.valor; n++; }
+      if (n > 0) Object.assign(r, { temDados: true, valor: soma / n, amostras: n });
+    } else if (tipo === 'RACK_MAIS_QUENTE') {
+      const por = new Map();
+      for (const g of this.historico) if (g.recebidoEm >= desde && Cadastro.tempRack(g.l) && g.l.rack) {
+        const a = por.get(g.l.rack) || [0, 0]; a[0] += g.l.valor; a[1]++; por.set(g.l.rack, a);
+      }
+      let melhor = null, maior = -Infinity, am = 0;
+      for (const [k, a] of por) { const m = a[0] / a[1]; if (m > maior) { maior = m; melhor = k; } am += a[1]; }
+      if (melhor !== null) Object.assign(r, { temDados: true, valor: maior, referencia: 'rack ' + melhor, amostras: am });
+    } else if (tipo === 'PICO_ENERGIA') {
+      let maior = -Infinity, fonte = null, n = 0;
+      for (const g of this.historico) if (g.recebidoEm >= desde && g.l.tipo === 'PDU' && g.l.grandeza === 'POTENCIA_W') {
+        n++; if (g.l.valor > maior) { maior = g.l.valor; fonte = g.l.fonteId; }
+      }
+      if (fonte !== null) Object.assign(r, { temDados: true, valor: maior, referencia: fonte, amostras: n });
+    } else throw new Error('consulta desconhecida: ' + tipo);
+    return r;
+  }
+  montar(d, agora) {
+    const id = d.fonteId, ultima = this.ultimaLeitura.get(id) || 0;
+    const ref = Math.max(ultima, this.descobertaEm.get(id));
+    const intervalo = Math.max(1, this.intervaloMs.get(id) ?? d.intervaloMs);
+    const ativa = agora - ref <= CFG.tolerancia * intervalo;
+    return { fonteId: id, tipo: d.tipo, ip: d.ip, porta: d.porta, controlavel: d.controlavel, rack: d.rack,
+      estado: ativa ? 'ATIVA' : 'INATIVA', ultimaLeituraMs: ultima, estadoAr: this.estadoAr.get(id) };
+  }
+  listar() { const agora = this.sim.now(); return [...this.fontes.values()].map(d => this.montar(d, agora)); }
+  info(id) { return this.montar(this.fontes.get(id), this.sim.now()); }
+}
+
+/* ---------- Processos ---------- */
+class Proc {
+  constructor(sim, term, args) { this.sim = sim; this.term = term; this.args = args; this.alive = true; this.started = false; this.handles = []; this.prompt = ''; }
+  log(t, cls) { this.term.print(t, cls); }
+  at(ms, fn) { const h = this.sim.at(ms, () => { if (this.alive) fn(); }); this.handles.push(h); return h; }
+  every(ms, fn, first) { const h = this.sim.every(ms, () => { if (this.alive) fn(); }, first); this.handles.push(h); return h; }
+  stop() { if (!this.alive) return; this.alive = false; this.handles.forEach(h => h.off = true); this.aoParar(); this.sim.mudou(); }
+  sair() { this.stop(); if (this.term.proc === this) this.term.proc = null; this.sim.mudou(); }
+  aoParar() {}
+  onInput() {}
+  get id() { return this.args[0]; }
+}
+
+/* Parte comum das três fontes: entram no grupo multicast, aprendem o gateway e enviam leituras UDP. */
+class Fonte extends Proc {
+  constructor(sim, term, args) { super(sim, term, args); this.joined = false; this.gw = null; this.seq = 0; }
+  entrarNoGrupo() { this.joined = true; this.log(`[${this.id}] no grupo ${CFG.grupo}:${CFG.mcPorta}`); }
+  onSolicitacao(sol, responder) {
+    if (!this.alive || !this.joined) return;
+    if (!sol.gatewayPortaUdp || !sol.gatewayIp) return;
+    const novo = `${sol.gatewayIp}:${sol.gatewayPortaUdp}`;
+    if (novo !== this.gw) this.log(`[${this.id}] gateway em /${novo}`);
+    this.gw = novo;
+    responder({ ...this.modelo(), nonce: sol.nonce });
+  }
+  enviar(l) {
+    if (this.sim.bytes) this.term.anotar(`Leitura (${PB.leitura(l).length} B)`, PB.hexEsp(PB.leitura(l)));
+    this.sim.udp(() => { const g = this.sim.udpDono; if (g && g.alive) g.onLeitura(l, this); });
+  }
+  get noId() { return ''; }
+}
+
+class ArCondicionado extends Fonte {
+  constructor(sim, term, args) {
+    super(sim, term, args);
+    this.args = [args[0] || 'ar-01', ...args.slice(1)];
+    this.porta = args[1] ? parseInt(args[1], 10) : CFG.arPorta;
+    this.ligado = true; this.setpointC = 22; this.ventiladorPct = 50; this.intervaloMs = 2000; this.temperaturaC = 24; this.proximo = 0;
+    this.kind = 'ar';
+  }
+  estado() { return { ligado: this.ligado, setpointC: this.setpointC, ventiladorPct: this.ventiladorPct, intervaloMs: this.intervaloMs }; }
+  modelo() { return { fonteId: this.id, tipo: 'AR_CONDICIONADO', ip: CFG.ip, porta: this.porta, controlavel: true, rack: '', intervaloMs: this.intervaloMs, estadoInicial: this.estado() }; }
+  static validar(c) {
+    if (c.setpointC !== undefined && !(c.setpointC >= 10 && c.setpointC <= 35)) return 'setpoint deve estar entre 10 e 35 °C';
+    if (c.ventiladorPct !== undefined && (c.ventiladorPct < 0 || c.ventiladorPct > 100)) return 'ventilador deve estar entre 0 e 100 %';
+    if (c.intervaloMs !== undefined && (c.intervaloMs < 500 || c.intervaloMs > 60000)) return 'intervalo deve estar entre 500 e 60000 ms';
+    return null;
+  }
+  /* chamada gRPC Configurar: devolve {codigo, estado | descricao} */
+  grpcConfigurar(c) {
+    const erro = ArCondicionado.validar(c);
+    if (erro) return { codigo: 'INVALID_ARGUMENT', descricao: erro };
+    if (c.ligado !== undefined) this.ligado = c.ligado;
+    if (c.setpointC !== undefined) this.setpointC = c.setpointC;
+    if (c.ventiladorPct !== undefined) this.ventiladorPct = c.ventiladorPct;
+    if (c.intervaloMs !== undefined) this.intervaloMs = c.intervaloMs;
+    const n = this.estado();
+    this.log(`[ar] comando aplicado: ligado=${n.ligado} setpoint=${f1(n.setpointC)} ventilador=${n.ventiladorPct}% intervalo=${n.intervaloMs}ms`);
+    return { codigo: 'OK', estado: n };
+  }
+  avancar(dt) {
+    const alvo = this.ligado ? this.setpointC : 32;
+    const taxa = 0.02 + 0.10 * this.ventiladorPct / 100;
+    this.temperaturaC += (alvo - this.temperaturaC) * Math.min(1, taxa * dt) + (Math.random() - 0.5) * 0.05;
+  }
+  start() {
+    if (this.sim.portasGrpc.has(this.porta)) {
+      this.log(`Exception in thread "main" java.io.IOException: Failed to bind to address 0.0.0.0/0.0.0.0:${this.porta}`);
+      this.sair(); return;
+    }
+    this.sim.portasGrpc.add(this.porta); this.started = true;
+    this.log(`[${this.id}] gRPC ouvindo na porta ${this.porta}`);
+    this.entrarNoGrupo();
+    this.every(100, () => {
+      this.avancar(0.1);
+      const agora = this.sim.now();
+      if (agora >= this.proximo && this.gw) {
+        const est = this.estado();
+        this.enviar({ fonteId: this.id, tipo: 'AR_CONDICIONADO', rack: '', grandeza: 'TEMPERATURA_C', valor: this.temperaturaC,
+          timestampMs: agora, evento: false, intervaloMs: est.intervaloMs, seq: this.seq++, estadoAr: est });
+        this.proximo = agora + est.intervaloMs;
+        this.log(`[${this.id}] enviei ${f1(this.temperaturaC)} °C (ligado=${est.ligado}, setpoint=${f1(est.setpointC)})`);
+      }
+    });
+    this.sim.mudou();
+  }
+  aoParar() { this.sim.portasGrpc.delete(this.porta); this.joined = false; }
+}
+
+class SensorTemperatura extends Fonte {
+  constructor(sim, term, args) {
+    super(sim, term, args);
+    this.args = [args[0] || 'temp-rack-A', args[1] || 'A'];
+    this.rack = this.args[1]; this.base = 22; this.acima = false; this.proximoPeriodico = 0; this.kind = 'sensor';
+  }
+  modelo() { return { fonteId: this.id, tipo: 'SENSOR_TEMPERATURA', ip: CFG.ip, porta: 0, controlavel: false, rack: this.rack, intervaloMs: 2000 }; }
+  start() {
+    this.started = true; this.entrarNoGrupo();
+    this.every(200, () => {
+      const valor = this.base + (Math.random() * 2 - 1);
+      const agoraAcima = valor > 27;
+      const agora = this.sim.now();
+      const evento = agoraAcima !== this.acima;
+      if (evento || agora >= this.proximoPeriodico) {
+        this.acima = agoraAcima; this.proximoPeriodico = agora + 2000;
+        if (this.gw) {
+          this.enviar({ fonteId: this.id, tipo: 'SENSOR_TEMPERATURA', rack: this.rack, grandeza: 'TEMPERATURA_C', valor,
+            timestampMs: agora, evento, intervaloMs: 2000, seq: this.seq++ });
+          this.log(`[${this.id}] enviei ${f1(valor)} °C` + (evento ? (agoraAcima ? '  EVENTO: passou de 27.0' : '  EVENTO: voltou abaixo de 27.0') : ''), evento ? 'ev' : '');
+        }
+      }
+    }, 0);
+    this.sim.mudou();
+  }
+  onInput(l) {
+    const s = l.trim().toLowerCase();
+    if (s === 'q') { this.base = 29; this.log('(rack esquentando: base 29.0 °C)'); }
+    else if (s === 'n') { this.base = 22; this.log('(rack normal: base 22.0 °C)'); }
+  }
+  aoParar() { this.joined = false; }
+}
+
+class Pdu extends Fonte {
+  constructor(sim, term, args) {
+    super(sim, term, args);
+    this.args = [args[0] || 'pdu-rack-A', args[1] || 'A'];
+    this.rack = this.args[1]; this.baseW = 3500; this.kind = 'pdu';
+  }
+  modelo() { return { fonteId: this.id, tipo: 'PDU', ip: CFG.ip, porta: 0, controlavel: false, rack: this.rack, intervaloMs: 2000 }; }
+  start() {
+    this.started = true; this.entrarNoGrupo();
+    this.every(2000, () => {
+      if (!this.gw) return;
+      const w = this.baseW + (Math.random() * 2 - 1) * 150;
+      this.enviar({ fonteId: this.id, tipo: 'PDU', rack: this.rack, grandeza: 'POTENCIA_W', valor: w,
+        timestampMs: this.sim.now(), evento: false, intervaloMs: 2000, seq: this.seq++ });
+      this.log(`[${this.id}] enviei ${w.toFixed(0)} W`);
+    }, 0);
+    this.sim.mudou();
+  }
+  onInput(l) {
+    const s = l.trim().toLowerCase();
+    if (s === 'q') { this.baseW = 6500; this.log('(pico de consumo: base 6500.0 W)'); }
+    else if (s === 'n') { this.baseW = 3500; this.log('(consumo normal: base 3500.0 W)'); }
+  }
+  aoParar() { this.joined = false; }
+}
+
+class Gateway extends Proc {
+  constructor(sim, term, args, opts) {
+    super(sim, term, args);
+    this.kind = 'gateway'; this.cad = new Cadastro(sim); this.conns = new Set(); this.round = null;
+    const m = /-Ddc\.descoberta\.s=(\d+)/.exec(opts || '');
+    this.descobertaS = m ? Math.max(1, parseInt(m[1], 10)) : CFG.descobertaS;
+  }
+  start() {
+    const s = this.sim; this.started = true;
+    this.udp = !s.udpDono; this.tcp = !s.tcpDono;
+    if (this.udp) { s.udpDono = this; this.log(`[udp] ouvindo leituras na porta ${CFG.udpPorta}`); }
+    else this.log('[udp] encerrou: java.net.BindException: Address already in use');
+    if (this.tcp) { s.tcpDono = this; this.log(`[tcp] aguardando clientes na porta ${CFG.tcpPorta}`); }
+    else this.log('[tcp] encerrou: java.net.BindException: Address already in use');
+    this.at(0, () => this.descobrir());
+    s.mudou();
+  }
+  aoParar() {
+    if (this.sim.udpDono === this) this.sim.udpDono = null;
+    if (this.sim.tcpDono === this) this.sim.tcpDono = null;
+    for (const c of this.conns) c.closed = true;
+    this.conns.clear();
+  }
+  descobrir() {
+    const s = this.sim, nonce = Math.floor(Math.random() * 2147483647), sol = { gatewayIp: CFG.ip, gatewayPortaUdp: CFG.udpPorta, nonce };
+    this.round = { nonce };
+    if (s.bytes) { const b = PB.solicitacao(sol); this.term.anotar(`DescobertaSolicitacao (${b.length} B) → ${CFG.grupo}:${CFG.mcPorta}`, PB.hexEsp(b)); }
+    s.emit('mc');
+    for (const f of s.fontes()) s.udp(() => f.onSolicitacao(sol, resp => { s.udp(() => this.onResposta(resp, nonce)); }));
+    this.at(CFG.janelaDescMs, () => {
+      this.round = null;
+      this.log(`[descoberta] rodada concluída: ${this.cad.fontes.size} fonte(s) cadastrada(s)`, 'm');
+      this.at(this.descobertaS * 1000, () => this.descobrir());
+    });
+  }
+  onResposta(r, nonce) {
+    if (!this.round || this.round.nonce !== nonce || r.nonce !== nonce) return;
+    if (this.cad.registrarFonte(r)) this.log(`[descoberta] nova fonte: ${r.fonteId} (${r.tipo}, rack ${r.rack})`, 'm');
+  }
+  onLeitura(l, origem) {
+    if (!this.udp) return;
+    if (!l.fonteId || !l.grandeza) { this.log('[udp] leitura sem fonte/grandeza descartada'); return; }
+    const anomalia = this.cad.registrarLeitura(l, this.sim.now());
+    this.log(`[udp] ${l.fonteId} ${l.grandeza} = ${f1(l.valor)}${l.evento ? '   <<< EVENTO' : ''}`, l.evento ? 'ev' : '');
+    if (anomalia) this.log(`[udp] ${l.fonteId}: ${anomalia}`, 'av');
+    this.sim.emit('leitura', origem);
+  }
+  /* TCP */
+  tcpConectar(cliente) {
+    if (!this.tcp || !this.alive) return null;
+    const c = { quem: `/127.0.0.1:${Math.floor(rnd(34000, 60000))}`, cliente, closed: false };
+    this.conns.add(c); this.log(`[tcp] cliente conectado: ${c.quem}`);
+    return c;
+  }
+  tcpDesconectar(c) { if (c.closed) return; c.closed = true; this.conns.delete(c); this.log(`[tcp] cliente desconectou: ${c.quem}`); }
+  tcpQuadroGigante() {
+    const c = this.tcpConectar(null); if (!c) return false;
+    this.at(rnd(15, 40), () => { this.conns.delete(c); c.closed = true;
+      this.log(`[tcp] conexão encerrada (${c.quem}): quadro de 2147483647 bytes fora do limite`); });
+    return true;
+  }
+  tcpPedido(c, pedido, cb) {
+    this.sim.emit('tcp');
+    this.at(rnd(3, 9), () => { if (c.closed) return cb(null); this.processar(pedido, cb); });
+  }
+  processar(p, cb) {
+    const ok = x => cb({ ok: true, ...x });
+    if (p.tipo === 'listar') return ok({ listar: this.cad.listar() });
+    if (p.tipo === 'consulta') {
+      try { return ok({ consulta: this.cad.consultar(p.consulta.tipo, p.consulta.janelaS) }); }
+      catch (e) { return cb({ ok: false, erro: e.message }); }
+    }
+    if (p.tipo === 'comando') return this.comandar(p.comando, cb);
+    cb({ ok: false, erro: 'pedido vazio' });
+  }
+  comandar(cmd, cb) {
+    const id = cmd.fonteId, f = this.cad.fonte(id), erro = m => cb({ ok: false, erro: m });
+    if (!f) return erro('fonte inexistente: ' + id);
+    if (!f.controlavel) return erro(`fonte ${id} não é controlável`);
+    const alvo = this.sim.servidorGrpc(f.ip, f.porta);
+    this.sim.emit('grpc');
+    if (!alvo) {
+      return this.at(rnd(25, 70), () => { this.log(`[grpc] falha ao comandar ${id}: UNAVAILABLE`, 'g'); erro(`fonte ${id} não respondeu (UNAVAILABLE)`); });
+    }
+    this.at(rnd(15, 40), () => {
+      const r = alvo.alive ? alvo.grpcConfigurar(cmd.config) : { codigo: 'UNAVAILABLE' };
+      if (r.codigo === 'OK') {
+        this.cad.atualizarEstadoAr(id, r.estado);
+        this.log(`[grpc] comando aplicado em ${id}`, 'g');
+        cb({ ok: true, comando: this.cad.info(id) });
+      } else {
+        this.log(`[grpc] falha ao comandar ${id}: ${r.codigo}`, 'g');
+        erro(r.codigo === 'INVALID_ARGUMENT' ? 'fonte recusou o comando: ' + r.descricao : `fonte ${id} não respondeu (${r.codigo})`);
+      }
+    });
+  }
+}
+
+const AJUDA = `comandos:
+  listar                          fontes e estados
+  ligar <id> | desligar <id>      liga/desliga o ar-condicionado
+  setpoint <id> <graus>           ex.: setpoint ar-01 20
+  ventilador <id> <0-100>
+  intervalo <id> <ms>             período de envio das leituras
+  consulta media|rack|pico [janela_s]
+  ajuda | sair`;
+
+class Cliente extends Proc {
+  constructor(sim, term, args) {
+    super(sim, term, args);
+    this.kind = 'cliente'; this.host = args[0] || '127.0.0.1'; this.porta = args[1] ? parseInt(args[1], 10) : CFG.tcpPorta;
+    this.fila = []; this.busy = false; this.prompt = 'dc> '; this.conn = null;
+  }
+  start() {
+    const gw = this.sim.tcpDono, local = ['127.0.0.1', 'localhost', CFG.ip].includes(this.host);
+    this.started = true;
+    if (!local || this.porta !== CFG.tcpPorta || !gw || !gw.alive) {
+      this.at(local ? 120 : 1500, () => { this.log(`não consegui conectar em ${this.host}:${this.porta} (o gateway está no ar?)`); this.sair(); });
+      return;
+    }
+    this.gw = gw; this.conn = gw.tcpConectar(this);
+    this.log(`conectado ao gateway ${this.host}:${this.porta}\n${AJUDA}`);
+    this.sim.mudou();
+  }
+  aoParar() { if (this.conn && this.gw) this.gw.tcpDesconectar(this.conn); }
+  onInput(l) { this.fila.push(l); this.proximo(); }
+  proximo() {
+    if (this.busy || !this.alive || !this.conn) return;
+    const bruto = this.fila.shift(); if (bruto === undefined) return;
+    const linha = bruto.trim();
+    if (linha === 'sair') return this.sair();
+    if (!linha) return this.proximo();
+    if (linha === 'ajuda') { this.log(AJUDA); return this.proximo(); }
+    let pedido;
+    try { pedido = Cliente.montarPedido(linha.split(/\s+/)); }
+    catch (e) { this.log('erro: ' + e.message); return this.proximo(); }
+    if (this.sim.bytes) {
+      const corpo = PB.pedido(pedido);
+      this.term.anotar(pedidoTexto(pedido));
+      this.term.anotar(`quadro TCP (${corpo.length + 4} B): ${PB.hexEsp(PB.frame(corpo).slice(0, 4))} | ${PB.hexEsp(corpo)}`);
+    }
+    if (this.conn.closed) return this.perdida();
+    this.busy = true;
+    this.gw.tcpPedido(this.conn, pedido, r => { this.busy = false; if (!this.alive) return; if (!r) return this.perdida(); this.mostrar(r); this.proximo(); });
+  }
+  perdida() { this.log('conexão com o gateway encerrada (EOFException)'); this.sair(); }
+  static numero(s) {
+    if (!/^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/.test(s)) throw new Error('número inválido: ' + s);
+    return Number(s);
+  }
+  static exigir(p, n) { if (p.length < n) throw new Error('faltam argumentos (digite ajuda)'); }
+  static montarPedido(p) {
+    const cmd = (cfg) => ({ tipo: 'comando', comando: { fonteId: p[1], config: cfg } });
+    switch (p[0]) {
+      case 'listar': return { tipo: 'listar' };
+      case 'ligar': Cliente.exigir(p, 2); return cmd({ ligado: true });
+      case 'desligar': Cliente.exigir(p, 2); return cmd({ ligado: false });
+      case 'setpoint': Cliente.exigir(p, 3); return cmd({ setpointC: Cliente.numero(p[2]) });
+      case 'ventilador': Cliente.exigir(p, 3); return cmd({ ventiladorPct: Math.trunc(Cliente.numero(p[2])) });
+      case 'intervalo': Cliente.exigir(p, 3); return cmd({ intervaloMs: Math.trunc(Cliente.numero(p[2])) });
+      case 'consulta': {
+        if (p.length < 2) throw new Error('use: consulta media|rack|pico [janela_s]');
+        const tipo = { media: 'TEMPERATURA_MEDIA', rack: 'RACK_MAIS_QUENTE', pico: 'PICO_ENERGIA' }[p[1]];
+        if (!tipo) throw new Error('consulta desconhecida: ' + p[1]);
+        return { tipo: 'consulta', consulta: { tipo, janelaS: p.length > 2 ? Math.trunc(Cliente.numero(p[2])) : 0 } };
+      }
+      default: throw new Error('comando desconhecido (digite ajuda)');
+    }
+  }
+  linha(f) {
+    const ultima = f.ultimaLeituraMs === 0 ? '-' : hhmmss(f.ultimaLeituraMs);
+    const detalhe = f.estadoAr ? `${f.estadoAr.ligado ? 'LIGADO' : 'DESLIGADO'} setpoint=${f1(f.estadoAr.setpointC)} vent=${f.estadoAr.ventiladorPct}% intervalo=${f.estadoAr.intervaloMs}ms` : '';
+    const cls = f.estado === 'INATIVA' ? 'er' : '';
+    this.log(Cliente.tabela(f.fonteId, f.tipo, `${f.ip}:${f.porta}`, f.rack || '-', f.estado, ultima, detalhe), cls);
+  }
+  static tabela(...c) { const w = [14, 19, 22, 5, 8, 9]; return c.map((x, i) => i < 6 ? String(x).padEnd(w[i]) : x).join(' '); }
+  mostrar(r) {
+    if (!r.ok) return this.log('ERRO: ' + r.erro, 'er');
+    if (r.listar) { this.log(Cliente.tabela('ID', 'TIPO', 'ENDEREÇO', 'RACK', 'ESTADO', 'ÚLT.LEIT.', 'DETALHE')); r.listar.forEach(f => this.linha(f)); }
+    else if (r.comando) { this.log('comando aplicado:'); this.linha(r.comando); }
+    else if (r.consulta) {
+      const c = r.consulta;
+      if (!c.temDados) this.log(`${c.tipo}: sem dados nos últimos ${c.janelaS} s`);
+      else this.log(`${c.tipo} (janela ${c.janelaS} s, ${c.amostras} amostras): ${c.valor.toFixed(2)}${c.referencia ? `  [${c.referencia}]` : ''}`);
+    } else this.log('(resposta vazia)');
+  }
+}
+
+/* ---------- Terminal (shell mínimo) ---------- */
+class Term {
+  constructor(sim, id, titulo, sugestao, cls) { this.sim = sim; this.id = id; this.titulo = titulo; this.sugestao = sugestao; this.cls = cls; this.proc = null; this.linhas = []; }
+  print(texto, cls) { String(texto).split('\n').forEach(l => this.sim.saida(this, l, cls || '')); }
+  anotar(texto, hex) { this.print('≈ ' + texto + (hex ? ': ' + hex : ''), 'dim'); }
+  get prompt() { return this.proc && this.proc.alive ? this.proc.prompt : '$ '; }
+  get ocupado() { return !!(this.proc && this.proc.alive); }
+  entrada(linha) {
+    this.print(this.prompt + linha, 'eco');
+    if (this.ocupado) this.proc.onInput(linha); else this.shell(linha);
+  }
+  interromper() {
+    if (!this.ocupado) return;
+    this.print('^C', 'dim'); const p = this.proc; p.stop(); this.proc = null; this.sim.mudou();
+  }
+  shell(linha) {
+    const l = linha.trim(); if (!l) return;
+    if (l === 'clear') return this.sim.limpar(this);
+    const m = /^(?:JAVA_OPTS=(?:"([^"]*)"|'([^']*)'|(\S+))\s+)?\.\/rodar\.sh\s+(\S+)(?:\s+(.*))?$/.exec(l);
+    if (m) return this.lancar(m[4], (m[5] || '').trim().split(/\s+/).filter(Boolean), m[1] ?? m[2] ?? m[3] ?? '');
+    if (/^mvn\s+(-q\s+)?compile$/.test(l)) return;
+    if (/^printf '\\x7f\\xff\\xff\\xff' \| nc 127\.0\.0\.1 5009$/.test(l)) {
+      const gw = this.sim.tcpDono;
+      if (!gw || !gw.alive || !gw.tcpQuadroGigante()) this.print('nc: connect to 127.0.0.1 port 5009 (tcp) failed: Connection refused');
+      return;
+    }
+    if (l === 'ls') return this.print('README.md  docs  pom.xml  rodar.sh  src  target');
+    this.print(`bash: ${l.split(/\s+/)[0]}: comando não encontrado (tente ./rodar.sh Gateway)`);
+  }
+  lancar(classe, args, opts) {
+    const C = { Gateway, ArCondicionado, SensorTemperatura, Pdu, Cliente }[classe];
+    if (!C) { this.print(`Error: Could not find or load main class dc.${classe}\nCaused by: java.lang.ClassNotFoundException: dc.${classe}`); return; }
+    const p = new C(this.sim, this, args, opts);
+    this.proc = p; this.sim.procs.push(p); this.sim.mudou();
+    p.at(rnd(550, 900), () => p.start());      // tempo de subir a JVM
+  }
+}
+
+/* ---------- Simulador: tempo virtual, rede e registro dos processos ---------- */
+class Sim {
+  constructor(hooks) {
+    this.hooks = hooks || {}; this.t = 0; this.fila = []; this.idSeq = 0; this.epoch = Date.now();
+    this.perda = 0; this.dup = 0; this.bytes = false;
+    this.terms = []; this.procs = []; this.udpDono = null; this.tcpDono = null; this.portasGrpc = new Set();
+  }
+  now() { return Math.floor(this.epoch + this.t); }       // ms inteiros, como System.currentTimeMillis()
+  inserir(e) { let i = this.fila.length; while (i > 0 && (this.fila[i - 1].t > e.t || (this.fila[i - 1].t === e.t && this.fila[i - 1].id > e.id))) i--; this.fila.splice(i, 0, e); }
+  at(ms, fn) { const e = { t: this.t + ms, id: ++this.idSeq, fn, off: false }; this.inserir(e); return e; }
+  every(ms, fn, first) { const e = { t: this.t + (first === undefined ? ms : first), id: ++this.idSeq, fn, off: false, period: ms }; this.inserir(e); return e; }
+  advance(dt) {
+    const alvo = this.t + dt;
+    for (;;) {
+      const e = this.fila[0];
+      if (!e || e.t > alvo) break;
+      this.fila.shift(); this.t = e.t;
+      if (e.off) continue;
+      e.fn();
+      if (e.period && !e.off) { e.t += e.period; e.id = ++this.idSeq; this.inserir(e); }
+    }
+    this.t = alvo;
+  }
+  udp(fn) {
+    if (Math.random() * 100 < this.perda) { this.emit('perdido'); return; }
+    this.at(rnd(1, 12), fn);
+    if (Math.random() * 100 < this.dup) this.at(rnd(30, 400), fn);
+  }
+  addTerm(id, titulo, sugestao, cls) { const t = new Term(this, id, titulo, sugestao, cls); this.terms.push(t); return t; }
+  fontes() { return this.procs.filter(p => p.alive && p.started && p.joined); }
+  servidorGrpc(ip, porta) { return this.procs.find(p => p.alive && p.started && p.kind === 'ar' && p.porta === porta && ip === CFG.ip); }
+  saida(term, linha, cls) { this.hooks.saida && this.hooks.saida(term, linha, cls); }
+  limpar(term) { this.hooks.limpar && this.hooks.limpar(term); }
+  mudou() { this.procs = this.procs.filter(p => p.alive || p.term.proc === p); this.hooks.mudou && this.hooks.mudou(); }
+  emit(tipo, dado) { this.hooks.evento && this.hooks.evento(tipo, dado); }
+  pararTudo() { this.terms.forEach(t => t.interromper()); }
+}
+
+root.DCSim = { Sim, PB, CFG, Cadastro, Cliente, pedidoTexto };
+})(typeof window !== 'undefined' ? window : globalThis);
+</script>
+
+<script id="interface">
+(function () {
+'use strict';
+const { Sim, CFG } = window.DCSim;
+const $ = (s, r) => (r || document).querySelector(s);
+const salvar = (k, v) => { try { localStorage.setItem(k, v); } catch (e) { /* sem armazenamento: segue sem lembrar */ } };
+const ler = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+
+/* ---------- simulação e terminais ---------- */
+const MAXLINHAS = 400;
+const vistas = new Map();      // id do terminal -> {pane, log, input, pr, dot, tit, sug}
+const sim = new Sim({
+  saida(term, linha, cls) {
+    const v = vistas.get(term.id); if (!v) return;
+    const d = document.createElement('div');
+    let c = cls;
+    if (!c) {
+      if (linha.startsWith('[udp]')) c = 'u'; else if (linha.startsWith('[grpc]')) c = 'g';
+      else if (linha.startsWith('[descoberta]')) c = 'm'; else if (linha.startsWith('[tcp]')) c = 't';
+    }
+    if (c) d.className = c;
+    d.textContent = linha;
+    const fim = v.log.scrollTop + v.log.clientHeight >= v.log.scrollHeight - 24;
+    v.log.appendChild(d);
+    while (v.log.childElementCount > MAXLINHAS) v.log.firstChild.remove();
+    if (fim) v.log.scrollTop = v.log.scrollHeight;
+  },
+  limpar(term) { const v = vistas.get(term.id); if (v) v.log.textContent = ''; },
+  mudou() { atualizarEstados(); },
+  evento(tipo, dado) { piscar(tipo, dado); }
+});
+
+const SUGESTOES = [
+  ['t1', 'Terminal 1 · ar-condicionado', './rodar.sh ArCondicionado ar-01', 'p-n1'],
+  ['t2', 'Terminal 2 · sensor rack A', './rodar.sh SensorTemperatura temp-rack-A A', 'p-n2'],
+  ['t3', 'Terminal 3 · sensor rack B', './rodar.sh SensorTemperatura temp-rack-B B', 'p-n3'],
+  ['t4', 'Terminal 4 · PDU rack A', './rodar.sh Pdu pdu-rack-A A', 'p-n4'],
+  ['t5', 'Terminal 5 · PDU rack B', './rodar.sh Pdu pdu-rack-B B', 'p-n5'],
+  ['t6', 'Terminal 6 · gateway', './rodar.sh Gateway', 'p-gw'],
+  ['t7', 'Terminal 7 · cliente', './rodar.sh Cliente', 'p-cli']
+];
+const DICA = 'dica: use o botão abaixo para digitar o comando sugerido, ou escreva o seu.';
+const historicos = new Map();
+
+function criarTerminal(id, titulo, sugestao, cls) {
+  const term = sim.addTerm(id, titulo, sugestao, cls);
+  const pane = document.createElement('section');
+  pane.className = 'pane ' + cls; pane.setAttribute('aria-label', titulo);
+  pane.innerHTML = '<div class="ph"><span class="dot"></span><span class="tit"></span><button type="button" data-a="cc" title="Interromper o processo (Ctrl+C)">Ctrl+C</button><button type="button" data-a="foco" title="Ampliar este terminal">⤢</button></div>' +
+    '<div class="log" role="log" aria-live="off" tabindex="0"></div>' +
+    '<button type="button" class="sug"></button>' +
+    '<form class="entrada" autocomplete="off"><span class="pr">$ </span><input type="text" spellcheck="false" autocapitalize="off" aria-label="Entrada do ' + titulo.toLowerCase() + '"></form>';
+  $('#terms').appendChild(pane);
+  const v = { pane, log: $('.log', pane), input: $('input', pane), pr: $('.pr', pane), dot: $('.dot', pane), tit: $('.tit', pane), sug: $('.sug', pane) };
+  vistas.set(id, v);
+  historicos.set(id, { itens: [], i: 0 });
+  v.tit.textContent = titulo;
+  if (sugestao) v.sug.textContent = '▶ ' + sugestao; else v.sug.hidden = true;
+  const dica = document.createElement('div'); dica.className = 'dim'; dica.textContent = DICA; v.log.appendChild(dica);
+  v.sug.addEventListener('click', () => digitar(id, sugestao));
+  $('form', pane).addEventListener('submit', e => {
+    e.preventDefault();
+    const txt = v.input.value; v.input.value = '';
+    const h = historicos.get(id); if (txt.trim()) { h.itens.push(txt); h.i = h.itens.length; }
+    term.entrada(txt); v.log.scrollTop = v.log.scrollHeight;
+  });
+  v.input.addEventListener('keydown', e => {
+    const h = historicos.get(id);
+    if (e.key === 'c' && e.ctrlKey && !window.getSelection().toString()) { e.preventDefault(); term.interromper(); }
+    else if (e.key === 'ArrowUp' && h.itens.length) { e.preventDefault(); h.i = Math.max(0, h.i - 1); v.input.value = h.itens[h.i] || ''; }
+    else if (e.key === 'ArrowDown' && h.itens.length) { e.preventDefault(); h.i = Math.min(h.itens.length, h.i + 1); v.input.value = h.itens[h.i] || ''; }
+    else if (e.key === 'Escape') sairDoFoco();
+  });
+  pane.addEventListener('click', e => {
+    const a = e.target.closest('button')?.dataset.a;
+    if (a === 'cc') term.interromper();
+    else if (a === 'foco') alternarFoco(pane);
+  });
+  return term;
+}
+
+function alternarFoco(pane) {
+  const caixa = $('#terms'), ligado = pane.classList.toggle('foco');
+  caixa.classList.toggle('tem-foco', ligado);
+  if (!ligado) caixa.classList.remove('tem-foco');
+}
+function sairDoFoco() { document.querySelectorAll('.pane.foco').forEach(p => p.classList.remove('foco')); $('#terms').classList.remove('tem-foco'); }
+
+function atualizarEstados() {
+  for (const t of sim.terms) {
+    const v = vistas.get(t.id); if (!v) continue;
+    const p = t.proc, vivo = p && p.alive;
+    v.dot.className = 'dot' + (vivo ? (p.started ? ' on' : ' boot') : '');
+    v.pr.textContent = t.prompt;
+    v.sug.hidden = !t.sugestao || vivo;
+    v.tit.textContent = vivo ? `${t.titulo} · ${p.constructor.name} ${p.args.join(' ')}`.trim() : t.titulo;
+  }
+  const on = id => sim.procs.some(p => p.alive && p.started && id(p));
+  const set = (id, ligado) => { const n = document.getElementById(id); if (n) n.classList.toggle('off', !ligado); };
+  set('n-gw', on(p => p.kind === 'gateway')); set('n-cli', on(p => p.kind === 'cliente'));
+  set('n-ar', on(p => p.kind === 'ar'));
+  set('n-tA', on(p => p.kind === 'sensor' && p.rack === 'A')); set('n-tB', on(p => p.kind === 'sensor' && p.rack === 'B'));
+  set('n-pA', on(p => p.kind === 'pdu' && p.rack === 'A')); set('n-pB', on(p => p.kind === 'pdu' && p.rack === 'B'));
+}
+
+/* linhas do diagrama piscam a cada pacote */
+function piscar(tipo, origem) {
+  let ids = [];
+  if (tipo === 'tcp') ids = ['l-tcp']; else if (tipo === 'grpc') ids = ['l-grpc']; else if (tipo === 'mc') ids = ['l-mc'];
+  else if (tipo === 'leitura' && origem) ids = [origem.kind === 'ar' ? 'l-u-ar' : (origem.kind === 'sensor' ? 'l-u-t' : 'l-u-p') + (origem.kind === 'ar' ? '' : origem.rack)];
+  for (const id of ids) {
+    const el = document.getElementById(id); if (!el) continue;
+    el.classList.add('flash'); clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove('flash'), 320);
+  }
+}
+
+/* ---------- digitação animada (chips, boot) ---------- */
+function digitar(id, texto, ao) {
+  const v = vistas.get(id); if (!v) return;
+  v.input.focus({ preventScroll: true });
+  let i = 0; v.input.value = '';
+  const passo = () => {
+    if (i <= texto.length) { v.input.value = texto.slice(0, i++); setTimeout(passo, 16); }
+    else { setTimeout(() => { $('form', v.pane).requestSubmit(); ao && ao(); }, 140); }
+  };
+  passo();
+}
+function toast(msg) {
+  const t = $('#toast'); t.textContent = msg; t.classList.add('on'); clearTimeout(t._t); t._t = setTimeout(() => t.classList.remove('on'), 3200);
+}
+const termos = id => sim.terms.find(t => t.id === id);
+
+function subirTudo() {
+  let atraso = 0;
+  for (const [id, , cmd] of SUGESTOES) {
+    const t = termos(id);
+    setTimeout(() => { if (!t.ocupado) digitar(id, cmd); }, atraso);
+    // fontes primeiro, gateway depois, cliente por último (a JVM real leva mais para entrar no grupo multicast)
+    atraso += id === 't5' ? (real.ativo ? 5200 : 2600) : (id === 't6' ? (real.ativo ? 2800 : 1900) : (real.ativo ? 900 : 700));
+  }
+}
+function pararTudo() { sim.pararTudo(); }
+function reiniciar() {
+  sim.pararTudo(); sim.procs = []; sim.udpDono = null; sim.tcpDono = null; sim.portasGrpc.clear();
+  sim.terms.forEach(t => { sim.limpar(t); const v = vistas.get(t.id); const d = document.createElement('div'); d.className = 'dim'; d.textContent = DICA; v.log.appendChild(d); });
+  atualizarEstados();
+}
+function termLivre() {
+  return sim.terms.find(t => !t.ocupado) || novoTerminal();
+}
+function novoTerminal() {
+  const n = sim.terms.length + 1;
+  return criarTerminal('t' + n, 'Terminal ' + n + ' · shell', '', 'p-x');
+}
+
+/* ---------- chips "Experimente" ---------- */
+const EXPERIMENTE = {
+  1: [{ r: 'Subir os 7 processos', a: 'subir' }],
+  2: [{ r: 'Subir os 7 processos', a: 'subir' }],
+  3: [{ r: 'Subir os 7 processos', a: 'subir' }, { r: 'listar', t: 't7', c: 'listar', precisa: 'cliente' }],
+  5: [{ r: 'Gateway com rodada a cada 10 s', t: 't6', c: 'JAVA_OPTS="-Ddc.descoberta.s=10" ./rodar.sh Gateway', troca: true }, { r: 'Mostrar bytes', a: 'bytes' }, { r: 'Perda UDP 40%', a: 'perda:40' }],
+  6: [{ r: 'Sensor A esquenta', t: 't2', c: 'q', precisa: 'sensor' }, { r: 'Sensor A normal', t: 't2', c: 'n', precisa: 'sensor' }, { r: 'PDU B pico', t: 't5', c: 'q', precisa: 'pdu' }, { r: 'PDU B normal', t: 't5', c: 'n', precisa: 'pdu' },
+    { r: 'Mostrar bytes', a: 'bytes' }, { r: 'Perda UDP 30%', a: 'perda:30' }, { r: 'Duplicação 30%', a: 'dup:30' }, { r: 'Rede normal', a: 'perda:0' }],
+  7: [{ r: 'desligar ar-01', t: 't7', c: 'desligar ar-01', precisa: 'cliente' }, { r: 'setpoint ar-01 99', t: 't7', c: 'setpoint ar-01 99', precisa: 'cliente' }, { r: 'setpoint ar-01 20', t: 't7', c: 'setpoint ar-01 20', precisa: 'cliente' },
+    { r: 'ligar ar-01', t: 't7', c: 'ligar ar-01', precisa: 'cliente' }, { r: 'ventilador ar-01 80', t: 't7', c: 'ventilador ar-01 80', precisa: 'cliente' }, { r: 'setpoint ar-01', t: 't7', c: 'setpoint ar-01', precisa: 'cliente' }],
+  8: [{ r: 'Mostrar bytes', a: 'bytes' }, { r: 'listar', t: 't7', c: 'listar', precisa: 'cliente' }, { r: 'setpoint ar-01 20', t: 't7', c: 'setpoint ar-01 20', precisa: 'cliente' }, { r: 'Quadro de 2 GiB', a: 'gigante' }],
+  9: [{ r: 'consulta media 10', t: 't7', c: 'consulta media 10', precisa: 'cliente' }, { r: 'consulta rack 10', t: 't7', c: 'consulta rack 10', precisa: 'cliente' }, { r: 'consulta pico 10', t: 't7', c: 'consulta pico 10', precisa: 'cliente' },
+    { r: 'Sensor A esquenta', t: 't2', c: 'q', precisa: 'sensor' }, { r: 'PDU B pico', t: 't5', c: 'q', precisa: 'pdu' }],
+  11: [{ r: 'Matar o ar-condicionado', a: 'cc:t1' }, { r: 'setpoint ar-01 21', t: 't7', c: 'setpoint ar-01 21', precisa: 'cliente' }, { r: 'listar', t: 't7', c: 'listar', precisa: 'cliente' },
+    { r: 'Subir o ar-condicionado de novo', t: 't1', c: './rodar.sh ArCondicionado ar-01' }, { r: 'Quadro de 2 GiB', a: 'gigante' }, { r: 'Perda UDP 40%', a: 'perda:40' }, { r: 'Rede normal', a: 'perda:0' }]
+};
+
+function executarChip(c) {
+  if (c.a && real.ativo && /^(perda|dup|bytes)/.test(c.a)) return toast('Isto só existe na simulação: volte ao modo "Simulação" para usar.');
+  if (c.a) {
+    if (c.a === 'subir') return subirTudo();
+    if (c.a === 'bytes') { const b = $('#c-bytes'); b.checked = !b.checked; b.dispatchEvent(new Event('change')); return toast(b.checked ? 'Bytes Protobuf visíveis nos terminais' : 'Bytes ocultos'); }
+    if (c.a.startsWith('perda:')) { const r = $('#c-perda'); r.value = c.a.slice(6); r.dispatchEvent(new Event('input')); return; }
+    if (c.a.startsWith('dup:')) { const r = $('#c-dup'); r.value = c.a.slice(4); r.dispatchEvent(new Event('input')); return; }
+    if (c.a.startsWith('cc:')) { const t = termos(c.a.slice(3)); if (!t.ocupado) return toast('Esse terminal não tem processo rodando'); return t.interromper(); }
+    if (c.a === 'gigante') {
+      const t = termLivre();
+      return digitar(t.id, "printf '\\x7f\\xff\\xff\\xff' | nc 127.0.0.1 5009");
+    }
+  }
+  const t = termos(c.t);
+  if (c.precisa === 'cliente') {
+    const p = t.proc;
+    if (!(p && p.alive && p.kind === 'cliente')) {
+      if (!gatewayNoAr()) return toast('Suba o gateway primeiro (botão "Subir tudo").');
+      if (t.ocupado) return toast('O terminal do cliente está ocupado com outro processo.');
+      return digitar(t.id, './rodar.sh Cliente', () => setTimeout(() => digitar(t.id, c.c), real.ativo ? 2600 : 1500));
+    }
+  } else if (c.precisa) {
+    const p = t.proc;
+    if (!(p && p.alive && p.kind === c.precisa)) return toast('Suba esse processo antes (botão "Subir tudo" ou o comando sugerido do terminal).');
+  }
+  if (c.troca && t.ocupado) { t.interromper(); return setTimeout(() => digitar(t.id, c.c), 250); }
+  if (!c.precisa && t.ocupado && !c.c.startsWith('JAVA_OPTS')) return toast('Esse terminal já tem um processo rodando; use Ctrl+C antes.');
+  digitar(t.id, c.c);
+}
+
+/* ---------- slides ---------- */
+const slides = [...document.querySelectorAll('.slide')];
+let atual = 0;
+function ir(n, atualizaHash) {
+  atual = Math.max(0, Math.min(slides.length - 1, n));
+  slides.forEach((s, i) => { s.hidden = i !== atual; });
+  $('#lista').value = String(atual);
+  $('#ant').disabled = atual === 0; $('#prox').disabled = atual === slides.length - 1;
+  $('#palco').scrollTop = 0; montarChips(atual + 1);
+  if (atualizaHash !== false) { try { history.replaceState(null, '', '#slide-' + (atual + 1)); } catch (e) { location.hash = 'slide-' + (atual + 1); } }
+  salvar('dcim-slide', String(atual));
+}
+slides.forEach((s, i) => {
+  const o = document.createElement('option'); o.value = String(i); o.textContent = `${i + 1}. ${s.dataset.titulo}`; $('#lista').appendChild(o);
+});
+function montarChips(n) {
+  const itens = EXPERIMENTE[n] || [], faixa = $('#exp'), caixa = $('#chips');
+  caixa.textContent = ''; faixa.hidden = !itens.length;
+  itens.forEach(c => {
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'chip';
+    if (c.c && !c.a) {
+      b.innerHTML = '<code></code><small></small>'; $('code', b).textContent = c.r;
+      $('small', b).textContent = c.t ? '→ ' + ({ t7: 'cliente', t6: 'gateway', t1: 'ar-condicionado', t2: 'sensor A', t5: 'PDU B' }[c.t] || c.t) : '';
+    } else b.textContent = c.r;
+    b.addEventListener('click', () => executarChip(c));
+    caixa.appendChild(b);
+  });
+}
+$('#ant').addEventListener('click', () => ir(atual - 1));
+$('#prox').addEventListener('click', () => ir(atual + 1));
+$('#lista').addEventListener('change', e => ir(parseInt(e.target.value, 10)));
+document.addEventListener('keydown', e => {
+  if (e.target.closest('input, select, textarea') || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.key === 'ArrowRight' || e.key === 'PageDown') { e.preventDefault(); ir(atual + 1); }
+  else if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.preventDefault(); ir(atual - 1); }
+  else if (e.key === 'Escape') sairDoFoco();
+});
+window.addEventListener('hashchange', () => { const m = /^#slide-(\d+)$/.exec(location.hash); if (m) ir(parseInt(m[1], 10) - 1, false); });
+
+/* ---------- barra de controles ---------- */
+$('#b-subir').addEventListener('click', subirTudo);
+$('#b-parar').addEventListener('click', pararTudo);
+$('#b-reset').addEventListener('click', reiniciar);
+$('#b-mais').addEventListener('click', () => { const t = novoTerminal(); vistas.get(t.id).input.focus(); });
+$('#c-vel').addEventListener('change', e => { velocidade = parseInt(e.target.value, 10); });
+$('#c-perda').addEventListener('input', e => { sim.perda = +e.target.value; $('#o-perda').textContent = e.target.value + '%'; });
+$('#c-dup').addEventListener('input', e => { sim.dup = +e.target.value; $('#o-dup').textContent = e.target.value + '%'; });
+$('#c-bytes').addEventListener('change', e => { sim.bytes = e.target.checked; });
+$('#b-alt').addEventListener('click', () => { const alt = parseInt(getComputedStyle($('#dock')).height, 10), max = window.innerHeight * 0.8;
+  definirAltura(alt > window.innerHeight * 0.6 ? window.innerHeight * 0.3 : max); });
+
+/* divisor arrastável */
+function definirAltura(px) {
+  const h = Math.max(150, Math.min(window.innerHeight * 0.85, px));
+  document.documentElement.style.setProperty('--dock-h', h + 'px'); salvar('dcim-dock', String(Math.round(h)));
+}
+const div = $('#divisor');
+div.addEventListener('pointerdown', e => {
+  const y0 = e.clientY, h0 = parseInt(getComputedStyle($('#dock')).height, 10);
+  div.setPointerCapture(e.pointerId);
+  const mover = ev => definirAltura(h0 + (y0 - ev.clientY));
+  const soltar = () => { div.removeEventListener('pointermove', mover); div.removeEventListener('pointerup', soltar); };
+  div.addEventListener('pointermove', mover); div.addEventListener('pointerup', soltar);
+});
+div.addEventListener('keydown', e => {
+  const h = parseInt(getComputedStyle($('#dock')).height, 10);
+  if (e.key === 'ArrowUp') { e.preventDefault(); definirAltura(h + 40); } else if (e.key === 'ArrowDown') { e.preventDefault(); definirAltura(h - 40); }
+});
+
+/* ---------- relógio da simulação ---------- */
+let velocidade = 1, ultimo = performance.now();
+setInterval(() => {
+  const agora = performance.now(), dt = Math.min(500, agora - ultimo); ultimo = agora;
+  if (document.hidden) return;
+  sim.advance(dt * velocidade);
+  for (const t of sim.terms) { const v = vistas.get(t.id); if (v && v.pr.textContent !== t.prompt) v.pr.textContent = t.prompt; }
+}, 25);
+
+/* ---------- modo "Java real": ponte local (classe dc.Painel) ---------- */
+const real = { ativo: false, base: '', token: '', es: null };
+const apiUrl = c => `${real.base}${c}${c.includes('?') ? '&' : '?'}t=${encodeURIComponent(real.token)}`;
+const post = (c, dados) => fetch(apiUrl(c), { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: new URLSearchParams(dados).toString() });
+const KIND = { Gateway: 'gateway', ArCondicionado: 'ar', SensorTemperatura: 'sensor', Pdu: 'pdu', Cliente: 'cliente' };
+const PADRAO = { ArCondicionado: ['ar-01'], SensorTemperatura: ['temp-rack-A', 'A'], Pdu: ['pdu-rack-A', 'A'] };
+const SHELL = /^(?:JAVA_OPTS=(?:"([^"]*)"|'([^']*)'|(\S+))\s+)?\.\/rodar\.sh\s+(\S+)(?:\s+(.*))?$/;
+const NOTA_SIM = $('#nota').innerHTML;
+function msgReal(t, erro) { const m = $('#r-msg'); m.textContent = t || ''; m.style.color = erro ? '#ff8585' : ''; }
+function gatewayNoAr() { return real.ativo ? sim.terms.some(t => t.proc && t.proc.alive && t.proc.kind === 'gateway') : !!sim.tcpDono; }
+function controlesDaSimulacao(ligados) {
+  for (const id of ['c-perda', 'c-dup', 'c-vel', 'c-bytes']) {
+    const el = document.getElementById(id); el.disabled = !ligados;
+    el.title = ligados ? '' : 'Só existe na simulação: na rede real não dá para provocar perda de pacotes daqui';
+  }
+}
+function procReal(t, classe, args) {
+  const a = args.length ? args : (PADRAO[classe] || []);
+  return { term: t, alive: true, started: true, kind: KIND[classe], rack: KIND[classe] === 'sensor' || KIND[classe] === 'pdu' ? (a[1] || 'A') : '',
+    args: a, constructor: { name: classe }, prompt: classe === 'Cliente' ? 'dc> ' : '',
+    onInput(linha) { post('/entrada', { term: t.id, linha }).catch(() => {}); },
+    stop() { this.alive = false; post('/parar', { term: t.id }).catch(() => {}); } };
+}
+function shellReal(t, linha) {
+  const l = linha.trim(); if (!l) return;
+  if (l === 'clear') return sim.limpar(t);
+  const m = SHELL.exec(l);
+  if (m) {
+    const args = (m[5] || '').trim().split(/\s+/).filter(Boolean), opts = m[1] ?? m[2] ?? m[3] ?? '';
+    post('/lancar', { term: t.id, classe: m[4], args: args.join(' '), opts }).then(async r => {
+      if (!r.ok) return t.print('erro: ' + await r.text(), 'er');
+      t.proc = procReal(t, m[4], args); sim.procs.push(t.proc); atualizarEstados();
+    }).catch(() => t.print('erro: sem conexão com o painel local', 'er'));
+  } else if (/^printf '\\x7f\\xff\\xff\\xff' \| nc 127\.0\.0\.1 5009$/.test(l)) {
+    post('/quadro-gigante', {}).then(r => { if (!r.ok) t.print('nc: connect to 127.0.0.1 port 5009 (tcp) failed: Connection refused'); });
+  } else t.print(`bash: ${l.split(/\s+/)[0]}: no modo Java real só vale ./rodar.sh <Classe> ... (tente ./rodar.sh Gateway)`);
+}
+function eventoReal(ev) {
+  const t = termos(ev.term); if (!t) return;
+  if (ev.tipo === 'saida') { sim.saida(t, ev.texto, ''); piscarReal(t, ev.texto); return; }
+  if (ev.tipo === 'fim') {
+    if (t.proc && t.proc.kind) { t.proc.alive = false; t.proc = null; }
+    sim.procs = sim.procs.filter(p => p.alive); sim.saida(t, `(processo encerrado, código ${ev.texto})`, 'dim'); atualizarEstados();
+  }
+}
+function piscarReal(t, texto) {
+  if (!t.proc || t.proc.kind !== 'gateway') return;
+  let m;
+  if ((m = /^\[udp\] (\S+) /.exec(texto))) { const p = sim.procs.find(x => x.kind !== 'gateway' && x.args[0] === m[1]); if (p) piscar('leitura', p); }
+  else if (texto.startsWith('[grpc]')) piscar('grpc');
+  else if (texto.startsWith('[tcp] cliente')) piscar('tcp');
+  else if (texto.startsWith('[descoberta] rodada')) piscar('mc');
+}
+async function conectarReal(base, token) {
+  msgReal('conectando…');
+  try {
+    const p = await (await fetch(base + '/ping')).json();
+    if (!p.painel) throw new Error('resposta inesperada');
+    real.base = base; real.token = token;
+    const r = await fetch(apiUrl('/estado'));
+    if (!r.ok) { msgReal('token recusado pelo painel', true); return false; }
+  } catch (e) { msgReal('não achei o painel local: rode ./rodar.sh Painel no seu computador', true); return false; }
+  entrarReal(); return true;
+}
+function entrarReal() {
+  sim.pararTudo(); sim.procs = []; sim.udpDono = null; sim.tcpDono = null; sim.portasGrpc.clear();
+  sim.terms.forEach(t => { sim.limpar(t); t.shell = l => shellReal(t, l); });
+  real.ativo = true;
+  real.es = new EventSource(apiUrl('/eventos'));
+  real.es.onmessage = e => eventoReal(JSON.parse(e.data));
+  real.es.onopen = () => msgReal('Java real conectado');
+  real.es.onerror = () => msgReal('conexão com o painel perdida', true);
+  controlesDaSimulacao(false); $('#r-box').hidden = true;
+  $('#m-sim').setAttribute('aria-pressed', 'false'); $('#m-real').setAttribute('aria-pressed', 'true');
+  $('#nota').textContent = 'Java real: processos rodando neste computador, via painel local';
+  atualizarEstados(); toast('Modo Java real: use "Subir tudo" ou os comandos ./rodar.sh');
+}
+function sairReal() {
+  sim.pararTudo(); if (real.es) real.es.close(); real.es = null; real.ativo = false; sim.procs = [];
+  sim.terms.forEach(t => { delete t.shell; sim.limpar(t); });
+  controlesDaSimulacao(true); msgReal('');
+  $('#m-sim').setAttribute('aria-pressed', 'true'); $('#m-real').setAttribute('aria-pressed', 'false');
+  $('#nota').innerHTML = NOTA_SIM; atualizarEstados();
+}
+$('#m-sim').addEventListener('click', () => { if (real.ativo) sairReal(); $('#r-box').hidden = true; });
+$('#m-real').addEventListener('click', () => {
+  if (real.ativo) return;
+  if (window.DC_PAINEL) return conectarReal('', window.DC_PAINEL.token);
+  $('#r-box').hidden = !$('#r-box').hidden; if (!$('#r-box').hidden) $('#r-token').focus();
+});
+$('#r-ok').addEventListener('click', () => conectarReal(`http://127.0.0.1:${parseInt($('#r-porta').value, 10) || 8099}`, $('#r-token').value.trim()));
+$('#r-token').addEventListener('keydown', e => { if (e.key === 'Enter') $('#r-ok').click(); });
+
+/* ---------- partida ---------- */
+SUGESTOES.forEach(([id, titulo, cmd, cls]) => criarTerminal(id, titulo, cmd, cls));
+const h0 = ler('dcim-dock'); if (h0 && +h0 > 0) definirAltura(+h0);
+const mh = /^#slide-(\d+)$/.exec(location.hash);
+ir(mh ? parseInt(mh[1], 10) - 1 : 0, !!mh);
+atualizarEstados();
+if (window.DC_PAINEL) {          // página servida pelo painel local: já abre ligada ao Java real
+  conectarReal('', window.DC_PAINEL.token).then(ok => { if (!ok) setTimeout(subirTudo, 1200); });
+} else {
+  setTimeout(subirTudo, 1200);   // abre já com a simulação no ar: o gateway começa a descobrir sozinho
+}
+})();
+</script>
+</body>
+</html>

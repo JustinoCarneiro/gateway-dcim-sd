@@ -220,8 +220,8 @@
       <ul style="font-size:20px">
         <li><b>Periódico:</b> a cada 2 s (intervalo anunciado).</li>
         <li><b>Evento imediato:</b> o sensor envia na hora ao <b>cruzar</b> 27 °C, subindo ou descendo (<code>evento = true</code>), sem repetir enquanto permanece acima.</li>
-        <li><code>intervalo_ms</code> alimenta o critério de inatividade; <code>seq</code> permite detectar perda, duplicação e reordenação.</li>
-        <li>O ar-condicionado anexa o <code>estado_ar</code>; <b>desligado, continua enviando</b> com <code>ligado = false</code>: ausência de leituras significa falha.</li>
+        <li><code>intervalo_ms</code> alimenta o critério de inatividade; o gateway confere o <code>seq</code> e registra <b>perda, duplicação e reordenação</b>.</li>
+        <li>O ar-condicionado anexa o <code>estado_ar</code>; <b>desligado, continua enviando</b> (<code>ligado = false</code>): sem leituras = falha.</li>
         <li>UDP porque as leituras são frequentes e a perda de uma é tolerável.</li>
         <li>O gateway usa a <b>hora de chegada</b>, não o <code>timestamp_ms</code> da fonte (relógios diferentes).</li>
       </ul>
@@ -350,11 +350,12 @@
   <h1>Falhas e robustez</h1>
   <p class="sub">Comportamentos testados com os processos reais, inclusive encerrando o ar-condicionado durante a execução.</p>
   <table>
-    <tr><th style="width:410px">Situação</th><th>Comportamento</th></tr>
+    <tr><th style="width:560px">Situação</th><th>Comportamento</th></tr>
     <tr><td>Fonte sem nenhuma leitura por mais de <b>3 intervalos</b></td><td><code>INATIVA</code> na listagem; volta a <code>ATIVA</code> na próxima leitura</td></tr>
     <tr><td>Comando a fonte que caiu</td><td>gRPC <code>UNAVAILABLE</code>; o cliente recebe "fonte não respondeu"; o gateway segue</td></tr>
     <tr><td>Comando fora da faixa (setpoint 99)</td><td><code>INVALID_ARGUMENT</code> da fonte, repassado ao cliente</td></tr>
-    <tr><td>Datagrama UDP inválido ou sem campos essenciais</td><td>Descartado (Protobuf aceita quase qualquer bytes: o conteúdo também é validado)</td></tr>
+    <tr><td>Datagrama UDP inválido ou sem campos essenciais</td><td>Descartado (o conteúdo também é validado)</td></tr>
+    <tr><td>UDP perdido, duplicado ou fora de ordem</td><td>Detectado pelo <code>seq</code> e registrado no log do gateway</td></tr>
     <tr><td>TCP: conteúdo inválido / pedido vazio</td><td>Resposta <code>ok = false</code>; a conexão continua</td></tr>
     <tr><td>TCP: tamanho declarado de 2 GiB</td><td>Conexão fechada; o gateway continua atendendo os demais</td></tr>
     <tr><td>Fonte que sobe depois do gateway</td><td>Achada na rodada seguinte de descoberta (até 30 s)</td></tr>
