@@ -1,0 +1,403 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Gateway DCIM — Sistemas Distribuídos</title>
+<style>
+  @page { size: 1280px 720px; margin: 0; }
+  :root {
+    --ink: #14213d; --muted: #566074; --bg: #ffffff; --panel: #f1f5f9; --line: #d3dae3;
+    --accent: #0b7285; --tcp: #14213d; --grpc: #1971c2; --udp: #e03131; --mc: #2f9e44; --warn: #e8590c;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #fff; }
+  body { font-family: "Inter", "Segoe UI", "Helvetica Neue", "Liberation Sans", Arial, sans-serif; color: var(--ink); }
+  .slide { width: 1280px; height: 720px; padding: 56px 72px 64px; position: relative; overflow: hidden;
+           page-break-after: always; break-after: page; background: var(--bg); }
+  .slide:last-child { page-break-after: auto; break-after: auto; }
+  h1 { font-size: 40px; line-height: 1.15; margin: 0 0 6px; letter-spacing: -0.01em; }
+  .sub { font-size: 21px; color: var(--muted); margin: 0 0 26px; }
+  .bar { position: absolute; left: 0; top: 0; width: 100%; height: 10px; background: var(--accent); }
+  .foot { position: absolute; left: 72px; right: 72px; bottom: 24px; display: flex; justify-content: space-between;
+          font-size: 15px; color: var(--muted); }
+  p, li { font-size: 22px; line-height: 1.4; }
+  ul { margin: 0; padding-left: 26px; } li { margin-bottom: 8px; }
+  code, pre { font-family: "JetBrains Mono", "DejaVu Sans Mono", "Liberation Mono", monospace; }
+  code { background: var(--panel); padding: 1px 6px; border-radius: 4px; font-size: 0.88em; }
+  pre { background: #0f1b2d; color: #e6edf6; padding: 18px 22px; border-radius: 10px; font-size: 16px; line-height: 1.45; margin: 0; overflow: hidden; }
+  .cols > pre { flex: 1.25; align-self: flex-start; }
+  pre.compacto { font-size: 14.5px; line-height: 1.35; padding: 14px 20px; }
+  pre .c { color: #8fa3bd; } pre .k { color: #7cc4ff; } pre .t { color: #ffd479; }
+  table { border-collapse: collapse; width: 100%; font-size: 19px; }
+  th { text-align: left; background: var(--panel); font-weight: 650; padding: 10px 14px; border-bottom: 2px solid var(--line); }
+  td { padding: 9px 14px; border-bottom: 1px solid var(--line); vertical-align: top; line-height: 1.3; }
+  .cols { display: flex; gap: 32px; } .cols > * { flex: 1; min-width: 0; }
+  .card { background: var(--panel); border-radius: 12px; padding: 18px 22px; }
+  .card h3 { margin: 0 0 8px; font-size: 21px; }
+  .tag { display: inline-block; font-size: 15px; font-weight: 650; color: #fff; padding: 2px 10px; border-radius: 999px; vertical-align: middle; }
+  .t-tcp { background: var(--tcp); } .t-grpc { background: var(--grpc); } .t-udp { background: var(--udp); } .t-mc { background: var(--mc); }
+  .small { font-size: 17px; color: var(--muted); }
+  .big { font-size: 30px; font-weight: 650; }
+  .ok { color: #2b8a3e; font-weight: 650; }
+  .title { display: flex; flex-direction: column; justify-content: center; }
+  .title h1 { font-size: 58px; margin-bottom: 14px; }
+  .title .sub { font-size: 26px; }
+</style>
+</head>
+<body>
+
+<!-- 1 ─ Título -->
+<section class="slide title">
+  <div class="bar"></div>
+  <h1>Gateway DCIM:<br>monitoramento de data center</h1>
+  <p class="sub">Sistemas distribuídos com multicast, UDP, gRPC e TCP, todas as mensagens em Protocol Buffers</p>
+  <p style="margin-top:40px">
+    <b>Antonio Marcos Justino Carneiro</b> · matrícula <b>511911</b><br>
+    <span class="small">TI0151 Sistemas Distribuídos · Universidade Federal do Ceará · 2026.2 · Prof. Paulo A. L. Rego</span>
+  </p>
+</section>
+
+<!-- 2 ─ Domínio -->
+<section class="slide">
+  <div class="bar"></div>
+  <h1>Domínio: data center (DCIM)</h1>
+  <p class="sub">Um sistema de gerenciamento da infraestrutura acompanha temperatura, energia e refrigeração dos racks.</p>
+  <div class="cols">
+    <div class="card"><h3>Gateway</h3><p style="margin:0;font-size:20px">Ponto central do DCIM: descobre as fontes, guarda as leituras, comanda o ar-condicionado e responde ao operador.</p></div>
+    <div class="card"><h3>Fontes</h3><p style="margin:0;font-size:20px"><b>Ar-condicionado</b> (controlável, gRPC)<br><b>Sensor de temperatura</b> por rack (evento ao passar do limiar)<br><b>PDU</b> (consumo em watts por rack)</p></div>
+    <div class="card"><h3>Cliente</h3><p style="margin:0;font-size:20px">Linha de comando: lista fontes e estados, liga/desliga, ajusta setpoint e faz 3 consultas agregadas.</p></div>
+  </div>
+  <p style="margin-top:28px"><b>Limiar de alerta: 27 °C</b>, topo da faixa recomendada (18–27 °C) do ASHRAE TC 9.9, <i>Thermal Guidelines</i>, 5ª ed. (2021). A faixa permitida da classe A1 vai até 32 °C.</p>
+  <p class="small">Unidades: °C e W · cada fonte é um processo separado · 5 fontes na demonstração (1 ar-condicionado, 2 sensores, 2 PDUs).</p>
+  <div class="foot"><span>Gateway DCIM · TI0151</span><span>2 / 12</span></div>
+</section>
+
+<!-- 3 ─ Arquitetura -->
+<section class="slide">
+  <div class="bar"></div>
+  <h1>Arquitetura</h1>
+  <p class="sub" style="margin-bottom:6px">O gateway é servidor para o cliente e para as leituras, e cliente gRPC da fonte controlável.</p>
+  <svg viewBox="0 0 1180 470" width="1136" height="452" xmlns="http://www.w3.org/2000/svg" font-family="Inter, Segoe UI, Liberation Sans, Arial, sans-serif">
+    <defs>
+      <marker id="aT" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#14213d"/></marker>
+      <marker id="aG" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#1971c2"/></marker>
+      <marker id="aU" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#e03131"/></marker>
+      <marker id="aM" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#2f9e44"/></marker>
+    </defs>
+    <!-- cliente e gateway -->
+    <rect x="490" y="6" width="200" height="54" rx="10" fill="#f1f5f9" stroke="#14213d" stroke-width="2"/>
+    <text x="590" y="30" text-anchor="middle" font-size="20" font-weight="700" fill="#14213d">Cliente CLI</text>
+    <text x="590" y="50" text-anchor="middle" font-size="14" fill="#566074">processo separado</text>
+    <rect x="440" y="150" width="300" height="80" rx="12" fill="#e3f4f1" stroke="#0b7285" stroke-width="2.5"/>
+    <text x="590" y="184" text-anchor="middle" font-size="24" font-weight="700" fill="#14213d">Gateway</text>
+    <text x="590" y="210" text-anchor="middle" font-size="15" fill="#566074">cadastro · histórico · consultas</text>
+    <!-- TCP -->
+    <line x1="590" y1="60" x2="590" y2="150" stroke="#14213d" stroke-width="3" marker-start="url(#aT)" marker-end="url(#aT)"/>
+    <text x="604" y="100" font-size="16" font-weight="700" fill="#14213d">TCP :5009</text>
+    <text x="604" y="120" font-size="14" fill="#566074">PedidoCliente / RespostaCliente</text>
+    <!-- fontes -->
+    <g font-size="17" font-weight="700" fill="#14213d" text-anchor="middle">
+      <rect x="55" y="360" width="190" height="72" rx="10" fill="#e7f0fb" stroke="#1971c2" stroke-width="2.5"/>
+      <text x="150" y="388">Ar-condicionado</text><text x="150" y="412" font-size="14" font-weight="400" fill="#566074">controlável · gRPC :50051</text>
+      <rect x="275" y="360" width="190" height="72" rx="10" fill="#fdecec" stroke="#e03131" stroke-width="2"/>
+      <text x="370" y="388">Sensor rack A</text><text x="370" y="412" font-size="14" font-weight="400" fill="#566074">contínuo · evento &gt; 27 °C</text>
+      <rect x="495" y="360" width="190" height="72" rx="10" fill="#fdecec" stroke="#e03131" stroke-width="2"/>
+      <text x="590" y="388">Sensor rack B</text><text x="590" y="412" font-size="14" font-weight="400" fill="#566074">contínuo · evento &gt; 27 °C</text>
+      <rect x="715" y="360" width="190" height="72" rx="10" fill="#fdecec" stroke="#e03131" stroke-width="2"/>
+      <text x="810" y="388">PDU rack A</text><text x="810" y="412" font-size="14" font-weight="400" fill="#566074">contínua · watts</text>
+      <rect x="935" y="360" width="190" height="72" rx="10" fill="#fdecec" stroke="#e03131" stroke-width="2"/>
+      <text x="1030" y="388">PDU rack B</text><text x="1030" y="412" font-size="14" font-weight="400" fill="#566074">contínua · watts</text>
+    </g>
+    <!-- gRPC -->
+    <path d="M440,190 C260,190 90,250 90,360" fill="none" stroke="#1971c2" stroke-width="3" marker-end="url(#aG)"/>
+    <text x="60" y="168" font-size="16" font-weight="700" fill="#1971c2">gRPC · comandos e estado</text>
+    <!-- UDP: fontes -> gateway -->
+    <g stroke="#e03131" stroke-width="2.4" stroke-dasharray="7 5" fill="none" marker-end="url(#aU)">
+      <line x1="125" y1="360" x2="480" y2="230"/>
+      <line x1="345" y1="360" x2="520" y2="230"/>
+      <line x1="565" y1="360" x2="560" y2="230"/>
+      <line x1="785" y1="360" x2="620" y2="230"/>
+      <line x1="1005" y1="360" x2="660" y2="230"/>
+    </g>
+    <text x="830" y="282" font-size="16" font-weight="700" fill="#e03131">UDP :5008 · Leitura</text>
+    <!-- multicast -->
+    <g stroke="#2f9e44" stroke-width="2.4" stroke-dasharray="2 6" stroke-linecap="round" fill="none">
+      <path d="M590,230 L590,325 L180,325 L180,360" marker-end="url(#aM)"/>
+      <path d="M590,325 L400,325 L400,360" marker-end="url(#aM)"/>
+      <path d="M590,325 L620,325 L620,360" marker-end="url(#aM)"/>
+      <path d="M590,325 L840,325 L840,360" marker-end="url(#aM)"/>
+      <path d="M590,325 L1060,325 L1060,360" marker-end="url(#aM)"/>
+    </g>
+    <text x="760" y="176" font-size="16" font-weight="700" fill="#2f9e44">multicast 239.255.42.99:5007 (pedido)</text>
+    <text x="760" y="198" font-size="14" fill="#2f9e44">a resposta de cada fonte volta por UDP unicast</text>
+    <!-- legenda -->
+    <g font-size="15" fill="#14213d">
+      <line x1="55" y1="458" x2="95" y2="458" stroke="#14213d" stroke-width="3"/><text x="102" y="463">TCP</text>
+      <line x1="170" y1="458" x2="210" y2="458" stroke="#1971c2" stroke-width="3"/><text x="217" y="463">gRPC</text>
+      <line x1="290" y1="458" x2="330" y2="458" stroke="#e03131" stroke-width="2.4" stroke-dasharray="7 5"/><text x="337" y="463">UDP</text>
+      <line x1="405" y1="458" x2="445" y2="458" stroke="#2f9e44" stroke-width="2.4" stroke-dasharray="2 6" stroke-linecap="round"/><text x="452" y="463">UDP multicast</text>
+      <text x="600" y="463" fill="#566074">Todas as mensagens são serializadas com Protocol Buffers.</text>
+    </g>
+  </svg>
+  <div class="foot"><span>Gateway DCIM · TI0151</span><span>3 / 12</span></div>
+</section>
+
+<!-- 4 ─ Tecnologias -->
+<section class="slide">
+  <div class="bar"></div>
+  <h1>Linguagem, frameworks e bibliotecas</h1>
+  <p class="sub">Uma única linguagem, sem frameworks de aplicação: sockets da biblioteca padrão, Protobuf e gRPC.</p>
+  <table>
+    <tr><th style="width:230px">Camada</th><th>Tecnologia</th></tr>
+    <tr><td>Linguagem</td><td>Java 21 (Temurin)</td></tr>
+    <tr><td>Build</td><td>Maven 3.8 · <code>protobuf-maven-plugin</code> 0.6.1 baixa o <code>protoc</code> e o plugin gRPC e gera o código a cada <code>mvn compile</code></td></tr>
+    <tr><td>Serialização</td><td>Protocol Buffers (proto3) · <code>protobuf-java</code> 3.25.5 · um único arquivo <code>datacenter.proto</code> compartilhado por todos os processos</td></tr>
+    <tr><td>Invocação remota</td><td>gRPC Java 1.68.0 · <code>grpc-netty-shaded</code>, <code>grpc-protobuf</code>, <code>grpc-stub</code></td></tr>
+    <tr><td>Sockets</td><td><code>java.net</code>: <code>MulticastSocket</code> e <code>DatagramSocket</code> (UDP), <code>ServerSocket</code> e <code>Socket</code> (TCP)</td></tr>
+    <tr><td>Concorrência</td><td>Threads de <code>java.lang</code> e <code>ScheduledExecutorService</code>; estado compartilhado com <code>synchronized</code> e <code>volatile</code></td></tr>
+  </table>
+  <p style="margin-top:22px" class="small">Processos (classes com <code>main</code>): <code>Gateway</code>, <code>ArCondicionado</code>, <code>SensorTemperatura</code>, <code>Pdu</code>, <code>Cliente</code> · apoio: <code>Cadastro</code>, <code>DescobertaFonte</code>, <code>Quadro</code>, <code>Rede</code>, <code>Config</code></p>
+  <div class="foot"><span>Gateway DCIM · TI0151</span><span>4 / 12</span></div>
+</section>
+
+<!-- 5 ─ Descoberta -->
+<section class="slide">
+  <div class="bar"></div>
+  <h1>Descoberta <span class="tag t-mc">UDP multicast</span></h1>
+  <p class="sub">O gateway não conhece os IPs das fontes: pergunta ao grupo <code>239.255.42.99:5007</code>; cada fonte responde por unicast.</p>
+  <div class="cols">
+    <pre><span class="c">// gateway → grupo multicast</span>
+<span class="k">message</span> <span class="t">DescobertaSolicitacao</span> {
+  string gateway_ip         = 1;
+  uint32 gateway_porta_udp  = 2;
+  uint32 nonce              = 3;
+}
+
+<span class="c">// fonte → gateway (unicast)</span>
+<span class="k">message</span> <span class="t">DescobertaResposta</span> {
+  string fonte_id    = 1;
+  TipoFonte tipo     = 2;
+  string ip          = 3;
+  uint32 porta       = 4;  <span class="c">// gRPC (0 = sem)</span>
+  bool controlavel   = 5;
+  string rack        = 6;
+  uint32 intervalo_ms = 7;
+  <span class="k">optional</span> EstadoAr estado_inicial = 8;
+  uint32 nonce       = 9;
+}</pre>
+    <div>
+      <ul style="font-size:20px">
+        <li>Ao iniciar, o gateway envia o pedido; <b>repete a cada 30 s</b> para achar fontes que subiram depois ou perderam o pedido (UDP).</li>
+        <li>A <b>solicitação leva o IP e a porta UDP do gateway</b>: a fonte aprende para onde mandar as leituras, sem configuração.</li>
+        <li>A resposta vai ao endereço de origem do pedido. O <b>nonce</b> descarta respostas de rodadas anteriores.</li>
+        <li>A resposta informa tipo, IP, porta (a do gRPC, nas controláveis) e o estado inicial.</li>
+        <li>Socket de descoberta separado do de leituras: o datagrama Protobuf não traz o tipo da mensagem.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="foot"><span>Gateway DCIM · TI0151</span><span>5 / 12</span></div>
+</section>
+
+<!-- 6 ─ Leituras -->
+<section class="slide">
+  <div class="bar"></div>
+  <h1>Leituras <span class="tag t-udp">UDP</span></h1>
+  <p class="sub">Um datagrama = uma mensagem <code>Leitura</code>, enviada à porta 5008 do gateway.</p>
+  <div class="cols">
+    <pre><span class="k">message</span> <span class="t">Leitura</span> {
+  string fonte_id      = 1;
+  TipoFonte tipo       = 2;
+  string rack          = 3;
+  Grandeza grandeza    = 4;  <span class="c">// °C ou W</span>
+  double valor         = 5;
+  int64 timestamp_ms   = 6;
+  bool evento          = 7;  <span class="c">// envio imediato</span>
+  uint32 intervalo_ms  = 8;
+  uint64 seq           = 9;
+  <span class="k">optional</span> EstadoAr estado_ar = 10;
+}</pre>
+    <div>
+      <ul style="font-size:20px">
+        <li><b>Periódico:</b> a cada 2 s (intervalo anunciado).</li>
+        <li><b>Evento imediato:</b> o sensor envia na hora ao <b>cruzar</b> 27 °C, subindo ou descendo (<code>evento = true</code>), sem repetir enquanto permanece acima.</li>
+        <li><code>intervalo_ms</code> alimenta o critério de inatividade; <code>seq</code> permite detectar perda, duplicação e reordenação.</li>
+        <li>O ar-condicionado anexa o <code>estado_ar</code>; <b>desligado, continua enviando</b> com <code>ligado = false</code>: ausência de leituras significa falha.</li>
+        <li>UDP porque as leituras são frequentes e a perda de uma é tolerável.</li>
+        <li>O gateway usa a <b>hora de chegada</b>, não o <code>timestamp_ms</code> da fonte (relógios diferentes).</li>
+      </ul>
+    </div>
+  </div>
+  <div class="foot"><span>Gateway DCIM · TI0151</span><span>6 / 12</span></div>
+</section>
+
+<!-- 7 ─ gRPC -->
+<section class="slide">
+  <div class="bar"></div>
+  <h1>Serviço gRPC do ar-condicionado <span class="tag t-grpc">gRPC</span></h1>
+  <p class="sub">A fonte controlável é o servidor; o gateway é o cliente. Definição em <code>datacenter.proto</code>.</p>
+  <div class="cols">
+    <pre><span class="k">service</span> <span class="t">ArCondicionado</span> {
+  <span class="k">rpc</span> Configurar(ConfigurarRequest) <span class="k">returns</span> (EstadoAr);
+  <span class="k">rpc</span> ObterEstado(Vazio)           <span class="k">returns</span> (EstadoAr);
+}
+
+<span class="k">message</span> <span class="t">ConfigurarRequest</span> {
+  <span class="k">optional</span> bool   ligado         = 1;
+  <span class="k">optional</span> double setpoint_c     = 2;  <span class="c">// 10..35</span>
+  <span class="k">optional</span> uint32 ventilador_pct = 3;  <span class="c">// 0..100</span>
+  <span class="k">optional</span> uint32 intervalo_ms   = 4;  <span class="c">// 500..60000</span>
+}
+
+<span class="k">message</span> <span class="t">EstadoAr</span> {
+  bool ligado = 1;  double setpoint_c = 2;
+  uint32 ventilador_pct = 3;  uint32 intervalo_ms = 4;
+}</pre>
+    <div>
+      <ul style="font-size:20px">
+        <li><b>Atualização parcial:</b> <code>optional</code> distingue "ausente" de zero; ausente = não alterar.</li>
+        <li><b>Idempotente:</b> o comando carrega valores absolutos, então repetir após um timeout é seguro (diferente de "diminuir 2 graus").</li>
+        <li><b>Validação na fonte:</b> valor fora da faixa devolve <code>INVALID_ARGUMENT</code>; o gateway repassa a mensagem ao cliente.</li>
+        <li><b>Prazo de 3 s</b> por chamada (<code>withDeadlineAfter</code>); fonte fora do ar devolve <code>UNAVAILABLE</code>.</li>
+        <li>Stub bloqueante no gateway; o servidor usa o pool de threads do gRPC.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="foot"><span>Gateway DCIM · TI0151</span><span>7 / 12</span></div>
+</section>
+
+<!-- 8 ─ TCP -->
+<section class="slide">
+  <div class="bar"></div>
+  <h1>Cliente ↔ gateway <span class="tag t-tcp">TCP</span></h1>
+  <p class="sub">TCP é um fluxo de bytes sem fronteiras de mensagem: cada mensagem Protobuf é enquadrada com seu tamanho.</p>
+  <svg viewBox="0 0 1136 74" width="1136" height="74" xmlns="http://www.w3.org/2000/svg" font-family="Inter, Segoe UI, Liberation Sans, Arial, sans-serif">
+    <rect x="0" y="8" width="240" height="56" fill="#14213d"/><text x="120" y="42" text-anchor="middle" fill="#fff" font-size="19" font-weight="700">tamanho · 4 bytes</text>
+    <rect x="240" y="8" width="520" height="56" fill="#e3f4f1" stroke="#0b7285" stroke-width="2"/><text x="500" y="42" text-anchor="middle" fill="#14213d" font-size="19" font-weight="700">corpo: PedidoCliente ou RespostaCliente (Protobuf)</text>
+    <rect x="760" y="8" width="240" height="56" fill="#14213d"/><text x="880" y="42" text-anchor="middle" fill="#fff" font-size="19" font-weight="700">tamanho · 4 bytes</text>
+    <rect x="1000" y="8" width="136" height="56" fill="#e3f4f1" stroke="#0b7285" stroke-width="2"/><text x="1068" y="42" text-anchor="middle" fill="#14213d" font-size="19" font-weight="700">próxima…</text>
+  </svg>
+  <p class="small" style="margin:6px 0 14px">Inteiro de 4 bytes em big-endian com o tamanho do corpo, seguido do corpo.</p>
+  <div class="cols">
+    <pre class="compacto"><span class="k">message</span> <span class="t">PedidoCliente</span> {
+  <span class="k">oneof</span> pedido {
+    ListarFontesRequest listar   = 1;
+    ComandoRequest      comando  = 2;  <span class="c">// fonte_id + config</span>
+    ConsultaRequest     consulta = 3;  <span class="c">// tipo + janela_s</span>
+  }
+}
+<span class="k">message</span> <span class="t">RespostaCliente</span> {
+  bool   ok   = 1;
+  string erro = 2;
+  <span class="k">oneof</span> resposta {
+    ListarFontesResponse listar   = 3;
+    ComandoResponse      comando  = 4;
+    ConsultaResponse     consulta = 5;
+  }
+}</pre>
+    <div>
+      <ul style="font-size:18px">
+        <li>Leitura com <code>readInt()</code> e <code>readFully()</code>: um <code>read()</code> solto poderia devolver só parte do quadro.</li>
+        <li><b>Conteúdo inválido:</b> o fluxo segue alinhado; resposta <code>ok = false</code> e a conexão continua.</li>
+        <li><b>Tamanho absurdo</b> (limite 1 MiB): alinhamento perdido e risco de esgotar a memória; conexão fechada.</li>
+        <li>Uma thread por cliente conectado.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="foot"><span>Gateway DCIM · TI0151</span><span>8 / 12</span></div>
+</section>
+
+<!-- 9 ─ Consultas -->
+<section class="slide">
+  <div class="bar"></div>
+  <h1>Três consultas agregadas</h1>
+  <p class="sub">Calculadas pelo gateway sobre as leituras que chegaram nos últimos <i>N</i> segundos (janela padrão: 300 s).</p>
+  <table>
+    <tr><th style="width:190px">Consulta</th><th>Definição</th><th style="width:330px">Resultado na demonstração (janela 8 s)</th></tr>
+    <tr><td><code>consulta media</code></td><td>Média das leituras de temperatura dos sensores de rack (°C). O ar-condicionado não entra: mede o ar de saída.</td><td>25,35 °C (8 amostras)</td></tr>
+    <tr><td><code>consulta rack</code></td><td>Rack com a maior <b>média</b> de temperatura na janela e o valor dessa média.</td><td>28,72 °C, rack A (sensor A esquentado)</td></tr>
+    <tr><td><code>consulta pico</code></td><td>Maior leitura de potência das PDUs (W) e a PDU que a gerou.</td><td>6457,79 W, pdu-rack-B (pico simulado)</td></tr>
+  </table>
+  <ul style="margin-top:24px;font-size:20px">
+    <li><b>Sem leituras na janela:</b> a resposta traz <code>tem_dados = false</code> e o cliente exibe "sem dados"; testado antes de as PDUs serem descobertas.</li>
+    <li>A <b>média por rack</b> mostra a tendência de aquecimento e evita alarme por uma amostra ruidosa; o <b>pico instantâneo</b> já é coberto pelo evento do sensor.</li>
+    <li>O histórico fica em memória, limitado a 1 hora.</li>
+  </ul>
+  <div class="foot"><span>Gateway DCIM · TI0151</span><span>9 / 12</span></div>
+</section>
+
+<!-- 10 ─ Concorrência -->
+<section class="slide">
+  <div class="bar"></div>
+  <h1>Concorrência em cada processo</h1>
+  <p class="sub">Cada atividade fica bloqueada esperando (datagrama, comando, relógio); threads permitem esperar em paralelo.</p>
+  <table>
+    <tr><th style="width:210px">Processo</th><th>Threads</th></tr>
+    <tr><td>Gateway</td><td><code>udp-leituras</code> (servidor UDP) · <code>tcp-clientes</code> (aceita conexões, <b>1 thread por cliente</b>) · agenda de descoberta (multicast a cada 30 s) · cliente gRPC chamado dentro da thread do cliente TCP</td></tr>
+    <tr><td>Ar-condicionado</td><td>principal (simula a temperatura e envia leituras) · <code>descoberta</code> (multicast) · <b>pool do gRPC</b> (atende <code>Configurar</code>)</td></tr>
+    <tr><td>Sensor / PDU</td><td>principal (amostragem e envio) · <code>descoberta</code> · <code>teclado</code> (apenas para forçar situações na demonstração)</td></tr>
+    <tr><td>Cliente</td><td>uma thread: envia o pedido e espera a resposta</td></tr>
+  </table>
+  <ul style="margin-top:22px;font-size:20px">
+    <li><b>Estado compartilhado protegido:</b> <code>Cadastro</code> (fontes e histórico) com todos os métodos <code>synchronized</code>; estado do ar-condicionado também; <code>volatile</code> nos campos lidos entre threads (destino das leituras, base da temperatura simulada).</li>
+    <li>O comando via gRPC altera o estado na thread do gRPC, e a thread principal o lê no envio seguinte: sem isso haveria leitura de valor pela metade.</li>
+  </ul>
+  <div class="foot"><span>Gateway DCIM · TI0151</span><span>10 / 12</span></div>
+</section>
+
+<!-- 11 -->
+<section class="slide">
+  <div class="bar"></div>
+  <h1>Falhas e robustez</h1>
+  <p class="sub">Comportamentos testados com os processos reais, inclusive encerrando o ar-condicionado durante a execução.</p>
+  <table>
+    <tr><th style="width:410px">Situação</th><th>Comportamento</th></tr>
+    <tr><td>Fonte sem nenhuma leitura por mais de <b>3 intervalos</b></td><td><code>INATIVA</code> na listagem; volta a <code>ATIVA</code> na próxima leitura</td></tr>
+    <tr><td>Comando a fonte que caiu</td><td>gRPC <code>UNAVAILABLE</code>; o cliente recebe "fonte não respondeu"; o gateway segue</td></tr>
+    <tr><td>Comando fora da faixa (setpoint 99)</td><td><code>INVALID_ARGUMENT</code> da fonte, repassado ao cliente</td></tr>
+    <tr><td>Datagrama UDP inválido ou sem campos essenciais</td><td>Descartado (Protobuf aceita quase qualquer bytes: o conteúdo também é validado)</td></tr>
+    <tr><td>TCP: conteúdo inválido / pedido vazio</td><td>Resposta <code>ok = false</code>; a conexão continua</td></tr>
+    <tr><td>TCP: tamanho declarado de 2 GiB</td><td>Conexão fechada; o gateway continua atendendo os demais</td></tr>
+    <tr><td>Fonte que sobe depois do gateway</td><td>Achada na rodada seguinte de descoberta (até 30 s)</td></tr>
+  </table>
+  <p style="margin-top:18px;font-size:19px"><b>Limite conhecido:</b> o detector por tempo não distingue fonte caída de rede caída (sistema assíncrono); reduzir a tolerância detecta mais rápido, com mais falsos alarmes.</p>
+  <div class="foot"><span>Gateway DCIM · TI0151</span><span>11 / 12</span></div>
+</section>
+
+<!-- 12 -->
+<section class="slide">
+  <div class="bar"></div>
+  <h1>Decisões, limitações e próximos passos</h1>
+  <p class="sub">Escopo mínimo do enunciado atendido; os extras ficaram de fora.</p>
+  <div class="cols">
+    <div class="card">
+      <h3>Requisitos atendidos</h3>
+      <ul style="font-size:19px">
+        <li class="ok" style="list-style:none;margin-left:-26px">✓ Multicast ao iniciar, respostas com tipo, IP, porta e estado</li>
+        <li class="ok" style="list-style:none;margin-left:-26px">✓ 3 tipos de fonte, processos separados; 1 controlável</li>
+        <li class="ok" style="list-style:none;margin-left:-26px">✓ UDP periódico + envio imediato por limiar</li>
+        <li class="ok" style="list-style:none;margin-left:-26px">✓ gRPC definido em <code>.proto</code> com estado de volta</li>
+        <li class="ok" style="list-style:none;margin-left:-26px">✓ Cliente TCP/Protobuf com 3 consultas</li>
+        <li class="ok" style="list-style:none;margin-left:-26px">✓ Falha de fonte demonstrada</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Limitações</h3>
+      <ul style="font-size:19px">
+        <li>Gateway é ponto único de falha; reiniciá-lo perde o histórico.</li>
+        <li>Sem TLS no gRPC nem autenticação no TCP.</li>
+        <li>Detecção de falha por tempo (falsos positivos em rede instável).</li>
+        <li>Multicast restrito à rede local (TTL 1).</li>
+      </ul>
+      <h3 style="margin-top:14px">Próximos passos (extras)</h3>
+      <ul style="font-size:19px">
+        <li>Persistência do histórico (arquivo ou banco).</li>
+        <li>Cliente com interface gráfica e séries temporais.</li>
+        <li>Fontes em outra linguagem, reaproveitando o mesmo <code>.proto</code>.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="foot"><span>Gateway DCIM · TI0151</span><span>12 / 12</span></div>
+</section>
+
+</body>
+</html>
