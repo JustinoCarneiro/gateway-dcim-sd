@@ -1368,9 +1368,32 @@ setInterval(() => {
 }, 25);
 
 /* ---------- modo "Java real": ponte local (classe dc.Painel) ---------- */
-const real = { ativo: false, base: '', token: '', es: null };
+const real = { ativo: false, base: '', token: '', ctl: null };
 const apiUrl = c => `${real.base}${c}${c.includes('?') ? '&' : '?'}t=${encodeURIComponent(real.token)}`;
-const post = (c, dados) => fetch(apiUrl(c), { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: new URLSearchParams(dados).toString() });
+/* Página pública falando com o painel em 127.0.0.1: o Chrome (Local Network Access) pede permissão ao usuário
+   e exige declarar o destino com targetAddressSpace. Quando a página é servida pelo próprio painel, nada disso se aplica. */
+const pedir = (url, init) => fetch(url, { ...init, ...(url.startsWith('http') ? { targetAddressSpace: 'loopback' } : {}) });
+const post = (c, dados) => pedir(apiUrl(c), { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: new URLSearchParams(dados).toString() });
+/* fluxo de eventos (SSE) lido com fetch: EventSource não aceita targetAddressSpace */
+async function abrirEventos(aoEvento, aoAbrir, aoCair) {
+  const ctl = new AbortController(); real.ctl = ctl;
+  try {
+    const r = await pedir(apiUrl('/eventos'), { signal: ctl.signal });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    aoAbrir();
+    const leitor = r.body.getReader(), dec = new TextDecoder(); let buf = '';
+    for (;;) {
+      const { value, done } = await leitor.read(); if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let i; while ((i = buf.indexOf('\n\n')) >= 0) {
+        const bloco = buf.slice(0, i); buf = buf.slice(i + 2);
+        const linha = bloco.split('\n').find(l => l.startsWith('data: '));
+        if (linha) aoEvento(JSON.parse(linha.slice(6)));
+      }
+    }
+    if (!ctl.signal.aborted) aoCair();
+  } catch (e) { if (!ctl.signal.aborted) aoCair(); }
+}
 const KIND = { Gateway: 'gateway', ArCondicionado: 'ar', SensorTemperatura: 'sensor', Pdu: 'pdu', Cliente: 'cliente' };
 const PADRAO = { ArCondicionado: ['ar-01'], SensorTemperatura: ['temp-rack-A', 'A'], Pdu: ['pdu-rack-A', 'A'] };
 const SHELL = /^(?:JAVA_OPTS=(?:"([^"]*)"|'([^']*)'|(\S+))\s+)?\.\/rodar\.sh\s+(\S+)(?:\s+(.*))?$/;
@@ -1423,29 +1446,26 @@ function piscarReal(t, texto) {
 async function conectarReal(base, token) {
   msgReal('conectando…');
   try {
-    const p = await (await fetch(base + '/ping')).json();
+    const p = await (await pedir(base + '/ping')).json();
     if (!p.painel) throw new Error('resposta inesperada');
     real.base = base; real.token = token;
-    const r = await fetch(apiUrl('/estado'));
+    const r = await pedir(apiUrl('/estado'));
     if (!r.ok) { msgReal('token recusado pelo painel', true); return false; }
-  } catch (e) { msgReal('não achei o painel local: rode ./rodar.sh Painel no seu computador', true); return false; }
+  } catch (e) { msgReal(base ? 'não consegui falar com o painel: rode ./rodar.sh Painel e, se o Chrome perguntar, permita o acesso a este dispositivo' : 'não achei o painel local: rode ./rodar.sh Painel no seu computador', true); return false; }
   entrarReal(); return true;
 }
 function entrarReal() {
   sim.pararTudo(); sim.procs = []; sim.udpDono = null; sim.tcpDono = null; sim.portasGrpc.clear();
   sim.terms.forEach(t => { sim.limpar(t); t.shell = l => shellReal(t, l); });
   real.ativo = true;
-  real.es = new EventSource(apiUrl('/eventos'));
-  real.es.onmessage = e => eventoReal(JSON.parse(e.data));
-  real.es.onopen = () => msgReal('Java real conectado');
-  real.es.onerror = () => msgReal('conexão com o painel perdida', true);
+  abrirEventos(eventoReal, () => msgReal('Java real conectado'), () => msgReal('conexão com o painel perdida', true));
   controlesDaSimulacao(false); $('#r-box').hidden = true;
   $('#m-sim').setAttribute('aria-pressed', 'false'); $('#m-real').setAttribute('aria-pressed', 'true');
   $('#nota').textContent = 'Java real: processos rodando neste computador, via painel local';
   atualizarEstados(); toast('Modo Java real: use "Subir tudo" ou os comandos ./rodar.sh');
 }
 function sairReal() {
-  sim.pararTudo(); if (real.es) real.es.close(); real.es = null; real.ativo = false; sim.procs = [];
+  sim.pararTudo(); setTimeout(() => { if (real.ctl) real.ctl.abort(); real.ctl = null; }, 400); real.ativo = false; sim.procs = [];
   sim.terms.forEach(t => { delete t.shell; sim.limpar(t); });
   controlesDaSimulacao(true); msgReal('');
   $('#m-sim').setAttribute('aria-pressed', 'true'); $('#m-real').setAttribute('aria-pressed', 'false');
