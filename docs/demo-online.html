@@ -1167,9 +1167,11 @@ function subirTudo() {
     atraso += id === 't5' ? (real.ativo ? 5200 : 2600) : (id === 't6' ? (real.ativo ? 2800 : 1900) : (real.ativo ? 900 : 700));
   }
 }
-function pararTudo() { sim.pararTudo(); }
+/* no Java real, manda parar todo terminal: depois de F5 a página não lembra dos processos que o painel ainda mantém */
+function pararReal() { if (real.ativo) sim.terms.forEach(t => post('/parar', { term: t.id }).catch(() => {})); }
+function pararTudo() { sim.pararTudo(); pararReal(); }
 function reiniciar() {
-  sim.pararTudo(); sim.procs = []; sim.udpDono = null; sim.tcpDono = null; sim.portasGrpc.clear();
+  sim.pararTudo(); pararReal(); sim.procs = []; sim.udpDono = null; sim.tcpDono = null; sim.portasGrpc.clear();
   sim.terms.forEach(t => { sim.limpar(t); const v = vistas.get(t.id); const d = document.createElement('div'); d.className = 'dim'; d.textContent = DICA; v.log.appendChild(d); });
   atualizarEstados();
 }
