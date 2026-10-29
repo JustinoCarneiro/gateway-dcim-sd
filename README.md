@@ -90,7 +90,7 @@ consulta media|rack|pico [janela_s]
   ./rodar.sh Painel          # na pasta do projeto; imprime o endereço e um token
   ```
 
-  Abra **http://localhost:8099/**. A página já abre ligada ao Java real: "Subir tudo" (ou os comandos `./rodar.sh ...` digitados em cada terminal), os botões "Experimente" de cada slide e o Ctrl+C de cada terminal rodam os mesmos processos das seções acima. Segurança: o painel escuta só em 127.0.0.1, exige o token sorteado a cada execução, confere o cabeçalho Host e só sobe as 5 classes do projeto com argumentos filtrados.
+  Abra **http://localhost:8099/**. A página já abre ligada ao Java real: "Subir tudo" (ou os comandos `./rodar.sh ...` digitados em cada terminal), os botões da faixa "Demonstração" de cada slide e o Ctrl+C de cada terminal rodam os mesmos processos das seções acima. Segurança: o painel escuta só em 127.0.0.1, exige o token sorteado a cada execução, confere o cabeçalho Host e só sobe as 5 classes do projeto com argumentos filtrados.
 - **Simulação**: um modelo em JavaScript do sistema (mesmas mensagens, comandos e saídas; os bytes Protobuf conferem com os do Java), com controle de perda e duplicação de UDP. É o que aparece quando a página é aberta sem o painel, por exemplo no link público: https://justinocarneiro.github.io/gateway-dcim-sd/demo-online.html. Nessa página, "Java real" aceita o token do painel (campo ao lado do botão) e funciona em Chrome e Firefox; se o navegador bloquear (Safari), abra http://localhost:8099/ direto.
 
 ## Decisões de projeto

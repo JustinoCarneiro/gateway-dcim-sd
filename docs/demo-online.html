@@ -201,7 +201,7 @@
     <button class="btn" id="prox" aria-label="Próximo slide">▶</button>
   </nav>
 </header>
-<div class="exp gutter claro" id="exp" hidden><h4>Experimente</h4><div class="chips" id="chips"></div></div>
+<div class="exp gutter claro" id="exp" hidden><h4>Demonstração</h4><div class="chips" id="chips"></div></div>
 
 <main class="palco gutter claro" id="palco" tabindex="-1">
 
@@ -213,13 +213,13 @@
   <p class="sub">Sistemas distribuídos com multicast, UDP, gRPC e TCP, todas as mensagens em Protocol Buffers.</p>
   <p class="autor"><b>Antonio Marcos Justino Carneiro</b> · matrícula <b>511911</b></p>
   <p class="curso">TI0151 – Sistemas Distribuídos (2026.2) · Professor: Paulo A. L. Rego · Fortaleza, CE · 2026</p>
-  <p class="peq nota-capa">Esta página reúne os slides e os sete terminais do sistema no mesmo lugar. Com o painel local ligado (<code>./rodar.sh Painel</code>) os terminais rodam o <b>Java real</b> deste computador; sem ele, rodam uma simulação no navegador com as mesmas mensagens, comandos e saídas. Use <b>← →</b> para trocar de slide e os botões <b>Experimente</b> para rodar comandos.</p>
+  <p class="peq nota-capa">Versão navegável dos slides, com os sete terminais do sistema. Com o painel local ligado (<code>./rodar.sh Painel</code>) os terminais rodam o <b>Java real</b> deste computador; sem ele, rodam uma simulação no navegador com as mesmas mensagens, comandos e saídas. Navegação pelas setas do teclado; cada slide traz os comandos da demonstração em botões.</p>
 </article>
 
 <!-- 2 ─ Domínio e arquitetura -->
 <article class="slide" id="slide-2" data-titulo="Domínio e arquitetura" hidden>
   <h1>Domínio e arquitetura</h1>
-  <p class="sub" style="margin-bottom:6px">Domínio: <b>data center (DCIM)</b>. O gateway reúne as fontes; o operador consulta e comanda pelo cliente. Aqui os nós acendem quando o processo está no ar e as linhas piscam a cada pacote.</p>
+  <p class="sub" style="margin-bottom:6px">Domínio: <b>data center (DCIM)</b>. O gateway reúne as fontes; o operador consulta e comanda pelo cliente. No diagrama, os nós acendem com o processo no ar e as linhas piscam a cada pacote.</p>
   <svg class="diagrama" viewBox="0 0 1180 470" role="img" aria-label="Diagrama: cliente fala TCP com o gateway; o gateway fala gRPC com o ar-condicionado, recebe UDP das cinco fontes e envia multicast para descobri-las">
     <defs>
       <marker id="aT" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="18" markerHeight="18" orient="auto-start-reverse"><path class="f-tcp" d="M0,0 L10,5 L0,10 z"/></marker>
@@ -389,7 +389,7 @@
 <!-- 7 ─ TCP e consultas -->
 <article class="slide" id="slide-7" data-titulo="Cliente, TCP e consultas" hidden>
   <h1>Cliente ↔ gateway e consultas <span class="tag t-tcp">TCP</span></h1>
-  <p class="sub">TCP é um fluxo de bytes: cada mensagem Protobuf vai com 4 bytes de tamanho na frente. Ligue "Mostrar bytes" na barra dos terminais para ver os quadros reais.</p>
+  <p class="sub">TCP é um fluxo de bytes: cada mensagem Protobuf vai com 4 bytes de tamanho na frente. Na simulação, a opção "Mostrar bytes" exibe os quadros reais nos terminais.</p>
   <svg class="diagrama" viewBox="0 0 1136 74" role="img" aria-label="Quadro TCP: 4 bytes de tamanho, corpo Protobuf, próximo quadro" style="max-height:74px">
     <rect x="0" y="8" width="240" height="56" class="f-tcp"/><text x="120" y="42" text-anchor="middle" fill="#fff" font-size="19" font-weight="700">tamanho · 4 bytes</text>
     <rect class="nd nd-gw" x="240" y="8" width="520" height="56"/><text class="tx" x="500" y="42" text-anchor="middle" font-size="19" font-weight="700">corpo: PedidoCliente ou RespostaCliente (Protobuf)</text>
@@ -430,7 +430,7 @@
 <!-- 8 ─ Falhas, concorrência e limitações -->
 <article class="slide" id="slide-8" data-titulo="Falhas e limitações" hidden>
   <h1>Falhas, concorrência e limitações</h1>
-  <p class="sub">Comportamentos testados com os processos reais. Aqui você provoca cada um.</p>
+  <p class="sub">Comportamentos testados com os processos reais.</p>
   <div class="cols">
     <div style="flex:1.45"><div class="rolagem"><table>
       <tr><th style="width:38%">Situação</th><th>Comportamento</th></tr>
@@ -1068,7 +1068,7 @@ const SUGESTOES = [
   ['t6', 'Terminal 6 · gateway', './rodar.sh Gateway', 'p-gw'],
   ['t7', 'Terminal 7 · cliente', './rodar.sh Cliente', 'p-cli']
 ];
-const DICA = 'dica: use o botão abaixo para digitar o comando sugerido, ou escreva o seu.';
+const DICA = 'comando sugerido no botão abaixo; também aceita digitação.';
 const historicos = new Map();
 
 function criarTerminal(id, titulo, sugestao, cls) {
