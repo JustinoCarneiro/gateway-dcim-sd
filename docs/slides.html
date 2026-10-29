@@ -218,9 +218,9 @@
   string rack          = 3;
   Grandeza grandeza    = 4;  <span class="c">// °C ou W</span>
   double valor         = 5;
-  int64 timestamp_ms   = 6;
+  int64 timestamp_ms   = 6;  <span class="c">// hora da medição</span>
   bool evento          = 7;  <span class="c">// envio imediato</span>
-  uint32 intervalo_ms  = 8;
+  uint32 intervalo_ms  = 8;  <span class="c">// período de envio</span>
   uint64 seq           = 9;
   <span class="k">optional</span> EstadoAr estado_ar = 10;
 }</pre>
@@ -335,7 +335,6 @@
         <div class="bloco" style="margin-top:10px"><div class="bt" style="font-size:20px">Limitações</div><div class="bb" style="padding:8px 16px 4px"><ul style="font-size:18px">
           <li>Gateway é ponto único de falha; sem TLS nem autenticação.</li>
           <li>O detector por tempo não distingue fonte caída de rede caída.</li>
-          <li>Extras não feitos: persistência, interface gráfica, outra linguagem.</li>
         </ul></div></div>
       </div>
     </div>
