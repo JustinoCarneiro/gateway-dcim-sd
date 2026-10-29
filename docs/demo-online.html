@@ -1255,7 +1255,9 @@ function termLivre() {
 }
 function novoTerminal() {
   const n = sim.terms.length + 1;
-  return criarTerminal('t' + n, 'Terminal ' + n + ' · shell', '', 'p-x');
+  const t = criarTerminal('t' + n, 'Terminal ' + n + ' · shell', '', 'p-x');
+  if (real.ativo) t.shell = l => shellReal(t, l);   // terminal criado já no modo Java real
+  return t;
 }
 
 /* ---------- chips "Experimente" ---------- */
