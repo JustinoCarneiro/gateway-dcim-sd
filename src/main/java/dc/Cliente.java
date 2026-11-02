@@ -4,6 +4,7 @@ import dc.proto.ComandoRequest;
 import dc.proto.ConfigurarRequest;
 import dc.proto.ConsultaRequest;
 import dc.proto.FonteInfo;
+import dc.proto.HistoricoRequest;
 import dc.proto.ListarFontesRequest;
 import dc.proto.PedidoCliente;
 import dc.proto.RespostaCliente;
@@ -28,6 +29,8 @@ import java.util.Locale;
 public class Cliente {
     private static final DateTimeFormatter HORA =
             DateTimeFormatter.ofPattern("HH:mm:ss").withZone(ZoneId.systemDefault());
+    private static final DateTimeFormatter DATA_HORA =
+            DateTimeFormatter.ofPattern("dd/MM HH:mm:ss").withZone(ZoneId.systemDefault());
 
     private static final String AJUDA = """
             comandos:
@@ -37,6 +40,7 @@ public class Cliente {
               ventilador <id> <0-100>
               intervalo <id> <ms>             período de envio das leituras
               consulta media|rack|pico [janela_s]
+              historico [id] [n]              últimas n leituras gravadas no CSV (padrão 20)
               ajuda | sair""";
 
     public static void main(String[] args) throws Exception {
@@ -109,6 +113,21 @@ public class Cliente {
                 return PedidoCliente.newBuilder()
                         .setConsulta(ConsultaRequest.newBuilder().setTipo(tipo).setJanelaS(janela)).build();
             }
+            case "historico": {
+                // historico [id] [n]  — um único argumento numérico é o n
+                String id = "";
+                int n = 0;   // 0 = padrão do gateway
+                if (p.length > 3) throw new IllegalArgumentException("use: historico [id] [n]");
+                if (p.length == 2 && p[1].matches("\\d+")) {
+                    n = (int) numero(p[1]);
+                } else {
+                    if (p.length > 1) id = p[1];
+                    if (p.length > 2) n = (int) numero(p[2]);
+                }
+                if (n < 0) throw new IllegalArgumentException("n deve ser positivo");
+                return PedidoCliente.newBuilder()
+                        .setHistorico(HistoricoRequest.newBuilder().setFonteId(id).setLimite(n)).build();
+            }
             default:
                 throw new IllegalArgumentException("comando desconhecido (digite ajuda)");
         }
@@ -155,6 +174,19 @@ public class Cliente {
                             c.getJanelaS(), c.getAmostras(), c.getValor(),
                             c.getReferencia().isEmpty() ? "" : "  [" + c.getReferencia() + "]");
                 }
+            }
+            case HISTORICO -> {
+                var h = r.getHistorico();
+                if (h.getLeiturasCount() == 0) {
+                    System.out.println("histórico vazio");
+                    break;
+                }
+                System.out.printf("%-20s %-14s %-5s %-14s %s%n", "RECEBIDA EM", "FONTE", "RACK", "GRANDEZA", "VALOR");
+                h.getLeiturasList().forEach(g -> System.out.printf(Locale.ROOT, "%-20s %-14s %-5s %-14s %.2f%s%n",
+                        DATA_HORA.format(Instant.ofEpochMilli(g.getRecebidoEmMs())), g.getLeitura().getFonteId(),
+                        g.getLeitura().getRack().isEmpty() ? "-" : g.getLeitura().getRack(),
+                        g.getLeitura().getGrandeza(), g.getLeitura().getValor(),
+                        g.getLeitura().getEvento() ? "   <<< EVENTO" : ""));
             }
             default -> System.out.println("(resposta vazia)");
         }

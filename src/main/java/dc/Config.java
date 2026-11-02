@@ -17,6 +17,11 @@ public final class Config {
     public static final int JANELA_PADRAO_S = 300;            // consultas sem janela explícita
     public static final long RETENCAO_MS = 60 * 60 * 1000L;   // histórico mais antigo que 1 h é descartado
 
+    /** Arquivo de persistência das leituras; -Ddc.csv=/outro/caminho.csv troca o local. */
+    public static final String CSV_CAMINHO = System.getProperty("dc.csv", "data/leituras.csv");
+    public static final int HISTORICO_PADRAO = 20;
+    public static final int HISTORICO_MAXIMO = 500;
+
     public static final int JANELA_DESCOBERTA_MS = 3000;
     /** Intervalo entre pedidos de descoberta; -Ddc.descoberta.s=8 encurta para testes. */
     public static final long INTERVALO_DESCOBERTA_S = Long.getLong("dc.descoberta.s", 30);

@@ -8,7 +8,10 @@ import dc.proto.DescobertaResposta;
 import dc.proto.DescobertaSolicitacao;
 import dc.proto.EstadoAr;
 import dc.proto.Grandeza;
+import dc.proto.HistoricoRequest;
+import dc.proto.HistoricoResponse;
 import dc.proto.Leitura;
+import dc.proto.LeituraRegistrada;
 import dc.proto.ListarFontesResponse;
 import dc.proto.PedidoCliente;
 import dc.proto.RespostaCliente;
@@ -32,6 +35,7 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketTimeoutException;
 import java.nio.ByteBuffer;
+import java.nio.file.Path;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.Random;
@@ -52,9 +56,15 @@ public class Gateway {
     private static final int PRAZO_GRPC_S = 3;
 
     private final Cadastro cadastro = new Cadastro();
+    private final HistoricoCsv csv = new HistoricoCsv(Path.of(Config.CSV_CAMINHO));
 
     public static void main(String[] args) throws Exception {
         Gateway gw = new Gateway();
+
+        // leituras da execução anterior que ainda estão dentro da retenção
+        var anteriores = gw.csv.carregar(System.currentTimeMillis() - Config.RETENCAO_MS);
+        gw.cadastro.restaurar(anteriores);
+        System.out.println("[csv] " + gw.csv.caminho() + ": " + anteriores.size() + " leitura(s) restaurada(s)");
 
         // sobe antes da descoberta, para não perder leituras de fontes que respondem rápido
         new Thread(gw::receberLeituras, "udp-leituras").start();
@@ -141,7 +151,9 @@ public class Gateway {
                         System.out.println("[udp] leitura sem fonte/grandeza descartada");
                         continue;
                     }
-                    String anomalia = cadastro.registrarLeitura(l, System.currentTimeMillis());
+                    long agora = System.currentTimeMillis();
+                    String anomalia = cadastro.registrarLeitura(l, agora);
+                    csv.gravar(new Cadastro.Registro(l, agora));
                     System.out.printf(Locale.ROOT, "[udp] %s %s = %.1f%s%n", l.getFonteId(), l.getGrandeza(),
                             l.getValor(), l.getEvento() ? "   <<< EVENTO" : "");
                     if (anomalia != null) System.out.println("[udp] " + l.getFonteId() + ": " + anomalia);
@@ -207,8 +219,19 @@ public class Gateway {
                     yield erro(e.getMessage());
                 }
             }
+            case HISTORICO -> historico(pedido.getHistorico());
             case PEDIDO_NOT_SET -> erro("pedido vazio");
         };
+    }
+
+    /** Últimas leituras gravadas no CSV (não só as da memória, que descarta o que passa de 1 h). */
+    RespostaCliente historico(HistoricoRequest req) {
+        int limite = req.getLimite() == 0 ? Config.HISTORICO_PADRAO : (int) Math.min(req.getLimite() & 0xFFFFFFFFL, Config.HISTORICO_MAXIMO);
+        HistoricoResponse.Builder resp = HistoricoResponse.newBuilder();
+        for (Cadastro.Registro r : csv.ultimos(req.getFonteId(), limite)) {
+            resp.addLeituras(LeituraRegistrada.newBuilder().setRecebidoEmMs(r.recebidoEm()).setLeitura(r.leitura()));
+        }
+        return RespostaCliente.newBuilder().setOk(true).setHistorico(resp).build();
     }
 
     // ------------------------------------------------------------------ comandos (gRPC)

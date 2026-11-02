@@ -139,12 +139,28 @@ message ConsultaRequest {
   uint32 janela_s = 2;     // 0 = janela padrão do gateway (300 s)
 }
 
+// Histórico: últimas leituras gravadas no CSV do gateway (inclui as de execuções anteriores).
+message HistoricoRequest {
+  string fonte_id = 1;     // "" = todas as fontes
+  uint32 limite = 2;       // 0 = 20; máximo 500
+}
+
 message PedidoCliente {
   oneof pedido {
     ListarFontesRequest listar = 1;
     ComandoRequest comando = 2;
     ConsultaRequest consulta = 3;
+    HistoricoRequest historico = 4;
   }
+}
+
+message LeituraRegistrada {
+  int64 recebido_em_ms = 1;   // relógio do gateway
+  Leitura leitura = 2;
+}
+
+message HistoricoResponse {
+  repeated LeituraRegistrada leituras = 1;   // da mais antiga para a mais recente
 }
 
 message ListarFontesResponse {
@@ -171,5 +187,6 @@ message RespostaCliente {
     ListarFontesResponse listar = 3;
     ComandoResponse comando = 4;
     ConsultaResponse consulta = 5;
+    HistoricoResponse historico = 6;
   }
 }

@@ -75,6 +75,16 @@ public class Cadastro {
         return anomalia;
     }
 
+    /**
+     * Repõe no histórico em memória leituras de uma execução anterior (lidas do CSV), para que
+     * as consultas por janela continuem valendo após reiniciar o gateway. Só o histórico é
+     * restaurado: última leitura e sequência de cada fonte vêm das leituras novas, senão uma
+     * fonte desligada pareceria ATIVA.
+     */
+    public synchronized void restaurar(List<Registro> antigas) {
+        for (Registro r : antigas) historico.addLast(r);
+    }
+
     /** Guarda o estado devolvido por um comando gRPC bem-sucedido. */
     public synchronized void atualizarEstadoAr(String fonteId, EstadoAr estado) {
         estadoAr.put(fonteId, estado);

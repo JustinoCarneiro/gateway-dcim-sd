@@ -23,6 +23,7 @@ Trabalho de Sistemas Distribuídos (TI0151, UFC). Um **gateway** central descobr
 | Leituras | UDP fonte → gateway | :5008 | `Leitura` (1 datagrama = 1 mensagem) |
 | Comandos | gRPC gateway → ar-condicionado | :50051 | `ArCondicionado.Configurar` / `ObterEstado` |
 | Cliente | TCP cliente → gateway | :5009 | `PedidoCliente` / `RespostaCliente` |
+| Persistência | arquivo local do gateway | `data/leituras.csv` | `Leitura` (uma linha por leitura recebida) |
 
 ## Processos
 
@@ -34,7 +35,7 @@ Trabalho de Sistemas Distribuídos (TI0151, UFC). Um **gateway** central descobr
 | `Pdu` | Fonte contínua; consumo do rack em watts a cada 2 s |
 | `Cliente` | CLI: listar, comandar, consultas agregadas |
 
-Classes de apoio: `Cadastro` (estado do gateway, thread-safe), `DescobertaFonte` (lado da fonte na descoberta), `Quadro` (enquadramento TCP), `Rede`, `Config`.
+Classes de apoio: `Cadastro` (estado do gateway, thread-safe), `HistoricoCsv` (persistência das leituras em CSV), `DescobertaFonte` (lado da fonte na descoberta), `Quadro` (enquadramento TCP), `Rede`, `Config`.
 
 ## Requisitos e instalação
 
@@ -70,7 +71,16 @@ setpoint <id> <graus>           10 a 35
 ventilador <id> <0-100>
 intervalo <id> <ms>             500 a 60000
 consulta media|rack|pico [janela_s]
+historico [id] [n]              últimas n leituras gravadas no CSV (padrão 20, máx. 500)
 ```
+
+### Persistência (CSV)
+
+O gateway acrescenta cada leitura válida a `data/leituras.csv` (pasta `data/` fora do Git; troque o local com `JAVA_OPTS="-Ddc.csv=/caminho/leituras.csv"`). Colunas: `recebido_em, recebido_em_ms, fonte_id, tipo, rack, grandeza, valor, timestamp_ms, evento, seq, intervalo_ms`.
+
+- Ao reiniciar, o gateway recarrega a última hora do arquivo (a mesma retenção da memória), então `consulta` por janela continua valendo. Fontes desligadas continuam INATIVAS: a última leitura e a sequência de cada fonte só vêm de leituras novas.
+- `historico` lê o arquivo inteiro, inclusive execuções anteriores. Se o disco falhar, o gateway avisa uma vez e segue só em memória.
+- O arquivo só cresce; apague-o para zerar o histórico.
 
 ### Roteiro curto para reproduzir
 
@@ -78,6 +88,7 @@ consulta media|rack|pico [janela_s]
 2. `desligar ar-01`, `setpoint ar-01 99` (recusado pela fonte, `INVALID_ARGUMENT`), `setpoint ar-01 20`, `ligar ar-01`.
 3. No terminal do sensor A, digitar `q`: o gateway mostra `<<< EVENTO` na hora. Digitar `n`: novo evento (voltou abaixo do limiar).
 4. No terminal da PDU B, digitar `q` (pico). Depois: `consulta media 10`, `consulta rack 10`, `consulta pico 10`.
+5. `historico temp-rack-A 5`: últimas 5 leituras do sensor, lidas do CSV. Reinicie o gateway e repita: o histórico continua lá.
 5. **Falha:** encerrar o ar-condicionado (Ctrl+C). `setpoint ar-01 21` retorna `não respondeu (UNAVAILABLE)`. Em alguns segundos, `listar` mostra `ar-01 INATIVA`.
 
 ## Versão navegável (slides + terminais)
