@@ -285,6 +285,7 @@
     ListarFontesRequest listar   = 1;
     ComandoRequest      comando  = 2;  <span class="c">// fonte_id + config</span>
     ConsultaRequest     consulta = 3;  <span class="c">// tipo + janela_s</span>
+    HistoricoRequest    historico = 4; <span class="c">// fonte_id + limite</span>
   }
 }
 <span class="k">message</span> <span class="t">RespostaCliente</span> {
@@ -294,6 +295,7 @@
     ListarFontesResponse listar   = 3;
     ComandoResponse      comando  = 4;
     ConsultaResponse     consulta = 5;
+    HistoricoResponse    historico = 6;
   }
 }</pre>
       <div>
@@ -305,6 +307,9 @@
           <li><code>media</code>: média das temperaturas dos sensores</li>
           <li><code>rack</code>: rack com a maior média de temperatura</li>
           <li><code>pico</code>: maior potência das PDUs e qual PDU</li>
+        </ul></div></div>
+        <div class="bloco" style="margin-top:10px"><div class="bt" style="font-size:20px">Histórico em CSV</div><div class="bb" style="padding:8px 16px 4px"><ul style="font-size:19px">
+          <li><code>historico [id] [n]</code>: últimas leituras do CSV, mesmo após reiniciar</li>
         </ul></div></div>
       </div>
     </div>

@@ -402,6 +402,7 @@
     ListarFontesRequest listar   = 1;
     ComandoRequest      comando  = 2;  <span class="c">// fonte_id + config</span>
     ConsultaRequest     consulta = 3;  <span class="c">// tipo + janela_s</span>
+    HistoricoRequest    historico = 4; <span class="c">// fonte_id + limite</span>
   }
 }
 <span class="k">message</span> <span class="t">RespostaCliente</span> {
@@ -411,6 +412,7 @@
     ListarFontesResponse listar   = 3;
     ComandoResponse      comando  = 4;
     ConsultaResponse     consulta = 5;
+    HistoricoResponse    historico = 6;
   }
 }</pre>
     <div>
@@ -422,6 +424,9 @@
         <li><code>media</code>: média das temperaturas dos sensores</li>
         <li><code>rack</code>: rack com a maior média de temperatura</li>
         <li><code>pico</code>: maior potência das PDUs e qual PDU</li>
+      </ul></div>
+      <div class="card" style="margin-top:10px"><h3>Histórico em CSV</h3><ul>
+        <li><code>historico [id] [n]</code>: últimas leituras do CSV, mesmo após reiniciar</li>
       </ul></div>
     </div>
   </div>
@@ -488,7 +493,7 @@
 'use strict';
 
 const CFG = { ip: '192.168.1.10', grupo: '239.255.42.99', mcPorta: 5007, udpPorta: 5008, tcpPorta: 5009, arPorta: 50051,
-  tolerancia: 3, janelaPadraoS: 300, retencaoMs: 3600000, janelaDescMs: 3000, descobertaS: 30, tamMaxQuadro: 1 << 20 };
+  tolerancia: 3, janelaPadraoS: 300, csv: 'data/leituras.csv', historicoPadrao: 20, historicoMaximo: 500, retencaoMs: 3600000, janelaDescMs: 3000, descobertaS: 30, tamMaxQuadro: 1 << 20 };
 
 const f1 = v => v.toFixed(1);
 const hhmmss = ms => { const d = new Date(ms); return [d.getHours(), d.getMinutes(), d.getSeconds()].map(x => String(x).padStart(2, '0')).join(':'); };
@@ -521,6 +526,7 @@ const PB = (() => {
   const solicitacao = s => [...str(1, s.gatewayIp), ...u(2, s.gatewayPortaUdp), ...u(3, s.nonce)];
   const pedido = p => p.tipo === 'listar' ? msg(1, [])
     : p.tipo === 'comando' ? msg(2, [...str(1, p.comando.fonteId), ...msg(2, config(p.comando.config))])
+    : p.tipo === 'historico' ? msg(4, [...str(1, p.historico.fonteId), ...u(2, p.historico.limite)])
     : msg(3, [...u(1, CONSULTA[p.consulta.tipo]), ...u(2, p.consulta.janelaS)]);
   const frame = body => [(body.length >>> 24) & 255, (body.length >>> 16) & 255, (body.length >>> 8) & 255, body.length & 255, ...body];
   const hex = b => b.map(x => x.toString(16).padStart(2, '0')).join('');
@@ -530,6 +536,7 @@ const PB = (() => {
 
 function pedidoTexto(p) {
   if (p.tipo === 'listar') return 'PedidoCliente { listar { } }';
+  if (p.tipo === 'historico') return `PedidoCliente { historico {${p.historico.fonteId ? ` fonte_id: "${p.historico.fonteId}"` : ''}${p.historico.limite ? ' limite: ' + p.historico.limite : ''} } }`;
   if (p.tipo === 'consulta') return `PedidoCliente { consulta { tipo: ${p.consulta.tipo}${p.consulta.janelaS ? ' janela_s: ' + p.consulta.janelaS : ''} } }`;
   const c = p.comando.config, cs = [];
   if (c.ligado !== undefined) cs.push('ligado: ' + c.ligado);
@@ -570,6 +577,8 @@ class Cadastro {
     if (l.estadoAr) this.estadoAr.set(l.fonteId, l.estadoAr);
     return anomalia;
   }
+  /* repõe leituras do CSV de uma execução anterior: só o histórico, sem última leitura nem seq */
+  restaurar(antigas) { this.historico.push(...antigas); }
   atualizarEstadoAr(id, e) { this.estadoAr.set(id, e); }
   fonte(id) { return this.fontes.get(id); }
   static tempRack(l) { return l.tipo === 'SENSOR_TEMPERATURA' && l.grandeza === 'TEMPERATURA_C'; }
@@ -768,6 +777,9 @@ class Gateway extends Proc {
   start() {
     const s = this.sim; this.started = true;
     this.udp = !s.udpDono; this.tcp = !s.tcpDono;
+    const antigas = s.csv.filter(g => g.recebidoEm >= s.now() - CFG.retencaoMs);
+    this.cad.restaurar(antigas);
+    this.log(`[csv] ${CFG.csv}: ${antigas.length} leitura(s) restaurada(s)`);
     if (this.udp) { s.udpDono = this; this.log(`[udp] ouvindo leituras na porta ${CFG.udpPorta}`); }
     else this.log('[udp] encerrou: java.net.BindException: Address already in use');
     if (this.tcp) { s.tcpDono = this; this.log(`[tcp] aguardando clientes na porta ${CFG.tcpPorta}`); }
@@ -800,7 +812,9 @@ class Gateway extends Proc {
   onLeitura(l, origem) {
     if (!this.udp) return;
     if (!l.fonteId || !l.grandeza) { this.log('[udp] leitura sem fonte/grandeza descartada'); return; }
-    const anomalia = this.cad.registrarLeitura(l, this.sim.now());
+    const agora = this.sim.now();
+    const anomalia = this.cad.registrarLeitura(l, agora);
+    this.sim.csv.push({ l, recebidoEm: agora });
     this.log(`[udp] ${l.fonteId} ${l.grandeza} = ${f1(l.valor)}${l.evento ? '   <<< EVENTO' : ''}`, l.evento ? 'ev' : '');
     if (anomalia) this.log(`[udp] ${l.fonteId}: ${anomalia}`, 'av');
     this.sim.emit('leitura', origem);
@@ -831,6 +845,12 @@ class Gateway extends Proc {
       catch (e) { return cb({ ok: false, erro: e.message }); }
     }
     if (p.tipo === 'comando') return this.comandar(p.comando, cb);
+    if (p.tipo === 'historico') {
+      /* últimas leituras do CSV inteiro (não só da memória, que descarta o que passa de 1 h) */
+      const { fonteId, limite } = p.historico, n = limite === 0 ? CFG.historicoPadrao : Math.min(limite, CFG.historicoMaximo);
+      const todas = this.sim.csv.filter(g => !fonteId || g.l.fonteId === fonteId);
+      return ok({ historico: todas.slice(-n) });
+    }
     cb({ ok: false, erro: 'pedido vazio' });
   }
   comandar(cmd, cb) {
@@ -863,6 +883,7 @@ const AJUDA = `comandos:
   ventilador <id> <0-100>
   intervalo <id> <ms>             período de envio das leituras
   consulta media|rack|pico [janela_s]
+  historico [id] [n]              últimas n leituras gravadas no CSV (padrão 20)
   ajuda | sair`;
 
 class Cliente extends Proc {
@@ -924,6 +945,18 @@ class Cliente extends Proc {
         if (!tipo) throw new Error('consulta desconhecida: ' + p[1]);
         return { tipo: 'consulta', consulta: { tipo, janelaS: p.length > 2 ? Math.trunc(Cliente.numero(p[2])) : 0 } };
       }
+      case 'historico': {
+        // historico [id] [n]: um único argumento numérico é o n
+        if (p.length > 3) throw new Error('use: historico [id] [n]');
+        let fonteId = '', limite = 0;
+        if (p.length === 2 && /^\d+$/.test(p[1])) limite = Math.trunc(Cliente.numero(p[1]));
+        else {
+          if (p.length > 1) fonteId = p[1];
+          if (p.length > 2) limite = Math.trunc(Cliente.numero(p[2]));
+        }
+        if (limite < 0) throw new Error('n deve ser positivo');
+        return { tipo: 'historico', historico: { fonteId, limite } };
+      }
       default: throw new Error('comando desconhecido (digite ajuda)');
     }
   }
@@ -942,6 +975,13 @@ class Cliente extends Proc {
       const c = r.consulta;
       if (!c.temDados) this.log(`${c.tipo}: sem dados nos últimos ${c.janelaS} s`);
       else this.log(`${c.tipo} (janela ${c.janelaS} s, ${c.amostras} amostras): ${c.valor.toFixed(2)}${c.referencia ? `  [${c.referencia}]` : ''}`);
+    } else if (r.historico) {
+      if (r.historico.length === 0) return this.log('histórico vazio');
+      this.log(`${'RECEBIDA EM'.padEnd(20)} ${'FONTE'.padEnd(14)} ${'RACK'.padEnd(5)} ${'GRANDEZA'.padEnd(14)} VALOR`);
+      for (const g of r.historico) {
+        const d = new Date(g.recebidoEm), dd = String(d.getDate()).padStart(2, '0'), mm = String(d.getMonth() + 1).padStart(2, '0');
+        this.log(`${(dd + '/' + mm + ' ' + hhmmss(g.recebidoEm)).padEnd(20)} ${g.l.fonteId.padEnd(14)} ${(g.l.rack || '-').padEnd(5)} ${g.l.grandeza.padEnd(14)} ${g.l.valor.toFixed(2)}${g.l.evento ? '   <<< EVENTO' : ''}`, g.l.evento ? 'ev' : '');
+      }
     } else this.log('(resposta vazia)');
   }
 }
@@ -989,6 +1029,7 @@ class Sim {
   constructor(hooks) {
     this.hooks = hooks || {}; this.t = 0; this.fila = []; this.idSeq = 0; this.epoch = Date.now();
     this.perda = 0; this.dup = 0; this.bytes = false;
+    this.csv = [];   // data/leituras.csv: sobrevive a um reinício do gateway (só "Reiniciar" a demo apaga)
     this.terms = []; this.procs = []; this.udpDono = null; this.tcpDono = null; this.portasGrpc = new Set();
   }
   now() { return Math.floor(this.epoch + this.t); }       // ms inteiros, como System.currentTimeMillis()
@@ -1171,7 +1212,7 @@ function subirTudo() {
 function pararReal() { if (real.ativo) sim.terms.forEach(t => post('/parar', { term: t.id }).catch(() => {})); }
 function pararTudo() { sim.pararTudo(); pararReal(); }
 function reiniciar() {
-  sim.pararTudo(); pararReal(); sim.procs = []; sim.udpDono = null; sim.tcpDono = null; sim.portasGrpc.clear();
+  sim.pararTudo(); pararReal(); sim.procs = []; sim.csv = []; sim.udpDono = null; sim.tcpDono = null; sim.portasGrpc.clear();
   sim.terms.forEach(t => { sim.limpar(t); const v = vistas.get(t.id); const d = document.createElement('div'); d.className = 'dim'; d.textContent = DICA; v.log.appendChild(d); });
   atualizarEstados();
 }
@@ -1194,7 +1235,7 @@ const EXPERIMENTE = {
     { r: 'Mostrar bytes', a: 'bytes' }, { r: 'Perda UDP 30%', a: 'perda:30' }, { r: 'Duplicação 30%', a: 'dup:30' }, { r: 'Rede normal', a: 'perda:0' }],
   6: [{ r: 'desligar ar-01', t: 't7', c: 'desligar ar-01', precisa: 'cliente' }, { r: 'setpoint ar-01 99', t: 't7', c: 'setpoint ar-01 99', precisa: 'cliente' }, { r: 'setpoint ar-01 20', t: 't7', c: 'setpoint ar-01 20', precisa: 'cliente' },
     { r: 'ligar ar-01', t: 't7', c: 'ligar ar-01', precisa: 'cliente' }, { r: 'ventilador ar-01 80', t: 't7', c: 'ventilador ar-01 80', precisa: 'cliente' }, { r: 'setpoint ar-01', t: 't7', c: 'setpoint ar-01', precisa: 'cliente' }],
-  7: [{ r: 'Mostrar bytes', a: 'bytes' }, { r: 'listar', t: 't7', c: 'listar', precisa: 'cliente' }, { r: 'Quadro de 2 GiB', a: 'gigante' }, { r: 'Sensor A esquenta', t: 't2', c: 'q', precisa: 'sensor' }, { r: 'PDU B pico', t: 't5', c: 'q', precisa: 'pdu' }, { r: 'consulta media 10', t: 't7', c: 'consulta media 10', precisa: 'cliente' }, { r: 'consulta rack 10', t: 't7', c: 'consulta rack 10', precisa: 'cliente' }, { r: 'consulta pico 10', t: 't7', c: 'consulta pico 10', precisa: 'cliente' }],
+  7: [{ r: 'Mostrar bytes', a: 'bytes' }, { r: 'listar', t: 't7', c: 'listar', precisa: 'cliente' }, { r: 'Quadro de 2 GiB', a: 'gigante' }, { r: 'Sensor A esquenta', t: 't2', c: 'q', precisa: 'sensor' }, { r: 'PDU B pico', t: 't5', c: 'q', precisa: 'pdu' }, { r: 'consulta media 10', t: 't7', c: 'consulta media 10', precisa: 'cliente' }, { r: 'consulta rack 10', t: 't7', c: 'consulta rack 10', precisa: 'cliente' }, { r: 'consulta pico 10', t: 't7', c: 'consulta pico 10', precisa: 'cliente' }, { r: 'historico 5', t: 't7', c: 'historico 5', precisa: 'cliente' }, { r: 'historico temp-rack-A 3', t: 't7', c: 'historico temp-rack-A 3', precisa: 'cliente' }],
   8: [{ r: 'Matar o ar-condicionado', a: 'cc:t1' }, { r: 'setpoint ar-01 21', t: 't7', c: 'setpoint ar-01 21', precisa: 'cliente' }, { r: 'listar', t: 't7', c: 'listar', precisa: 'cliente' },
     { r: 'Subir o ar-condicionado de novo', t: 't1', c: './rodar.sh ArCondicionado ar-01' }, { r: 'Quadro de 2 GiB', a: 'gigante' }, { r: 'Perda UDP 40%', a: 'perda:40' }, { r: 'Rede normal', a: 'perda:0' }]
 };
