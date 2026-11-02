@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Guia do código — Gateway DCIM</title>
+<style>
+  @page { size: A4; margin: 17mm 15mm 19mm;
+    @bottom-center { content: "Guia do código · Gateway DCIM · " counter(page) " / " counter(pages); font: 8.5pt "DejaVu Sans", sans-serif; color: #777; } }
+  * { box-sizing: border-box; }
+  body { font: 10.3pt/1.45 "DejaVu Sans", "Liberation Sans", Arial, sans-serif; color: #1c1c1c; margin: 0; }
+  h1 { font-size: 22pt; margin: 0 0 4pt; }
+  h2 { font-size: 15pt; margin: 22pt 0 6pt; padding-bottom: 3pt; border-bottom: 2px solid #1a1a1a; break-after: avoid; }
+  h2.nova { break-before: page; margin-top: 0; }
+  h3 { font-size: 11.6pt; margin: 14pt 0 4pt; break-after: avoid; }
+  h4 { font-size: 10.3pt; margin: 9pt 0 2pt; break-after: avoid; }
+  p { margin: 4pt 0 6pt; }
+  ul, ol { margin: 3pt 0 7pt; padding-left: 17pt; }
+  li { margin: 1.5pt 0; }
+  code, pre { font-family: "DejaVu Sans Mono", "Liberation Mono", monospace; }
+  code { font-size: 8.9pt; background: #f0f0f0; padding: 0.5pt 3pt; border-radius: 2pt; }
+  pre { font-size: 8.3pt; line-height: 1.35; background: #f4f4f4; border-left: 3px solid #1a1a1a; padding: 6pt 8pt; margin: 5pt 0 8pt; white-space: pre-wrap; break-inside: avoid; }
+  table { border-collapse: collapse; width: 100%; margin: 5pt 0 9pt; font-size: 9.2pt; }
+  th, td { border: 1px solid #b9b9b9; padding: 3pt 5pt; text-align: left; vertical-align: top; }
+  th { background: #e6e6e6; }
+  tr { break-inside: avoid; }
+  .capa { height: 255mm; display: flex; flex-direction: column; justify-content: center; }
+  .capa .sub { font-size: 13pt; color: #444; margin: 6pt 0 22pt; }
+  .capa .meta { font-size: 10.5pt; color: #333; line-height: 1.7; }
+  .aviso { background: #fff6dc; border: 1px solid #e0c36a; padding: 6pt 9pt; margin: 6pt 0 9pt; break-inside: avoid; }
+  .por { background: #eaf3ff; border-left: 3px solid #1971c2; padding: 5pt 9pt; margin: 5pt 0 9pt; break-inside: avoid; }
+  .q { font-weight: 700; margin-top: 9pt; break-after: avoid; }
+  .peq { font-size: 9pt; color: #555; }
+  .tag { display: inline-block; font-size: 8pt; font-weight: 700; padding: 0 4pt; border-radius: 2pt; background: #1a1a1a; color: #fff; }
+  .toc li { margin: 2pt 0; }
+  .toc { columns: 2; column-gap: 20pt; }
+</style>
+</head>
+<body>
+
+<!-- ============================ CAPA ============================ -->
+<section class="capa">
+  <h1>Guia do código<br>Gateway DCIM</h1>
+  <div class="sub">Monitoramento de data center com multicast, UDP, gRPC e TCP, tudo em Protocol Buffers</div>
+  <div class="meta">
+    TI0151 · Sistemas Distribuídos (2026.2) · UFC<br>
+    Material de estudo para a arguição<br>
+    Repositório: github.com/JustinoCarneiro/gateway-dcim-sd<br><br>
+    <b>Como usar este guia.</b> O professor vai perguntar o <b>porquê de cada decisão</b> (Protobuf, linguagem, comunicação entre
+    os elementos). Por isso, além de explicar o que cada arquivo e cada função fazem, o guia traz, em cada ponto, a justificativa
+    da escolha e, no final, uma lista de perguntas prováveis com respostas curtas, uma seção sobre os dispositivos (as fontes de dados)
+    e um roteiro para deixar tudo rodando antes de a arguição começar.
+  </div>
+</section>
+
+<!-- ============================ ÍNDICE ============================ -->
+<h2 class="nova">Índice</h2>
+<ol class="toc">
+  <li>O sistema em uma página</li>
+  <li>Organização das pastas e dos arquivos</li>
+  <li>Como compilar e executar</li>
+  <li>O contrato: <code>datacenter.proto</code></li>
+  <li>Classe por classe, função por função</li>
+  <li>Fluxos ponta a ponta</li>
+  <li>Concorrência: quem roda em qual thread</li>
+  <li>Decisões e justificativas (perguntas prováveis)</li>
+  <li>Os dispositivos (fontes de dados)</li>
+  <li>Limitações que vale admitir</li>
+  <li>Mapa: pergunta → onde está no código</li>
+  <li>Antes da arguição: deixar tudo rodando</li>
+</ol>
+
+<!-- ============================ 1 ============================ -->
+<h2>1. O sistema em uma página</h2>
+<p><b>Domínio:</b> monitoramento de data center (DCIM, <i>Data Center Infrastructure Management</i>). Um <b>gateway</b> central descobre
+<b>fontes de dados</b>, recebe as leituras delas, comanda a fonte controlável e responde a um <b>cliente</b> de linha de comando.</p>
+
+<table>
+  <tr><th>Processo</th><th>Classe</th><th>Papel</th><th>Quantos na demonstração</th></tr>
+  <tr><td>Gateway</td><td><code>Gateway</code></td><td>Centro do sistema: descoberta, recepção UDP, servidor TCP, cliente gRPC, histórico</td><td>1</td></tr>
+  <tr><td>Ar-condicionado</td><td><code>ArCondicionado</code></td><td>Fonte <b>controlável</b> (servidor gRPC) que também envia leituras</td><td>1 (<code>ar-01</code>)</td></tr>
+  <tr><td>Sensor de temperatura</td><td><code>SensorTemperatura</code></td><td>Fonte contínua por rack, com evento imediato ao cruzar 27 °C</td><td>2 (racks A e B)</td></tr>
+  <tr><td>PDU</td><td><code>Pdu</code></td><td>Fonte contínua: consumo do rack em watts</td><td>2 (racks A e B)</td></tr>
+  <tr><td>Cliente</td><td><code>Cliente</code></td><td>Terminal do operador: listar, comandar, consultar</td><td>1</td></tr>
+  <tr><td>Painel (extra)</td><td><code>Painel</code></td><td>Ponte HTTP entre a página da demonstração e os processos reais. Não faz parte do sistema</td><td>opcional</td></tr>
+</table>
+
+<h3>Os cinco canais de comunicação</h3>
+<table>
+  <tr><th>Canal</th><th>Transporte e endereço</th><th>Mensagem (.proto)</th><th>Por que esse transporte</th></tr>
+  <tr><td>Descoberta (pedido)</td><td>UDP <b>multicast</b> 239.255.42.99:5007</td><td><code>DescobertaSolicitacao</code></td><td>O gateway não conhece os IPs das fontes: pergunta a um grupo e quem estiver escutando responde</td></tr>
+  <tr><td>Descoberta (resposta)</td><td>UDP <b>unicast</b> ao remetente do pedido</td><td><code>DescobertaResposta</code></td><td>Só o gateway precisa da resposta; não faz sentido inundar o grupo</td></tr>
+  <tr><td>Leituras</td><td>UDP unicast fonte → gateway :5008</td><td><code>Leitura</code></td><td>Frequente, pequena, perda ocasional é tolerável; sem conexão por fonte</td></tr>
+  <tr><td>Comandos</td><td><b>gRPC</b> gateway → ar-condicionado :50051</td><td><code>ArCondicionado.Configurar</code> / <code>ObterEstado</code></td><td>Comando exige resposta confiável, contrato tipado e códigos de erro</td></tr>
+  <tr><td>Cliente</td><td><b>TCP</b> cliente → gateway :5009</td><td><code>PedidoCliente</code> / <code>RespostaCliente</code></td><td>Conversa de pedido e resposta, que precisa ser confiável e ordenada</td></tr>
+</table>
+<div class="aviso"><b>Regra do enunciado cumprida:</b> todas as mensagens de rede, inclusive a descoberta e o cliente TCP, são Protocol Buffers.
+O único conteúdo que não é Protobuf é o arquivo CSV local do gateway, que não trafega pela rede.</div>
+
+<!-- ============================ 2 ============================ -->
+<h2 class="nova">2. Organização das pastas e dos arquivos</h2>
+<pre>gateway-java/
+├── pom.xml                      build Maven: dependências e geração do código Protobuf/gRPC
+├── rodar.sh                     atalho para subir qualquer classe: ./rodar.sh Gateway
+├── README.md                    instruções de instalação, execução e roteiro da demonstração
+├── .gitignore                   ignora target/, data/ e arquivos de IDE
+│
+├── src/main/proto/
+│   └── datacenter.proto         O CONTRATO: todas as mensagens e o serviço gRPC (um único arquivo)
+│
+├── src/main/java/dc/            todo o código-fonte (um único pacote, "dc")
+│   ├── Gateway.java             processo central
+│   ├── Cadastro.java            estado do gateway em memória (fontes, leituras, consultas)
+│   ├── HistoricoCsv.java        persistência das leituras em CSV
+│   ├── Cliente.java             CLI do operador
+│   ├── ArCondicionado.java      fonte controlável (servidor gRPC)
+│   ├── SensorTemperatura.java   fonte contínua de temperatura
+│   ├── Pdu.java                 fonte contínua de potência
+│   ├── DescobertaFonte.java     lado da fonte na descoberta (compartilhado pelas 3 fontes)
+│   ├── Quadro.java              enquadramento de mensagens no TCP (4 bytes de tamanho)
+│   ├── Rede.java                escolha da interface de rede para o multicast
+│   ├── Config.java              portas, endereços e parâmetros em um só lugar
+│   └── Painel.java              servidor HTTP da demonstração (extra)
+│
+├── docs/
+│   ├── slides.html / slides.pdf     os 8 slides da apresentação (o PDF é gerado do HTML)
+│   ├── gerar_pdf.sh                 gera slides.pdf com o Chrome em modo headless
+│   ├── demo-online.html             demonstração no navegador: simulação ou Java real (via Painel)
+│   ├── guia-do-codigo.html / .pdf   este guia
+│   └── lm-fontes.css, ufc_logo.png  fontes e logotipo dos slides
+│
+├── data/leituras.csv            GERADO em execução: histórico das leituras (fora do Git)
+└── target/                      GERADO pelo Maven: classes compiladas e código Protobuf/gRPC (fora do Git)</pre>
+
+<div class="por"><b>Pontos que o professor pode perguntar.</b>
+(1) <b>As classes <code>Leitura</code>, <code>DescobertaResposta</code> etc. não estão em <code>src/</code></b>: o <code>mvn compile</code> as gera
+a partir do <code>.proto</code> em <code>target/generated-sources</code> (pacote <code>dc.proto</code>). Isso garante que todos os processos usem
+exatamente o mesmo contrato. (2) <b>Um pacote só</b>: o sistema é pequeno e cada classe é um processo ou um apoio direto, então separar em
+subpacotes só traria burocracia.</div>
+
+<h3>Quem é processo e quem é apoio</h3>
+<table>
+  <tr><th>Tem <code>main</code> (vira processo)</th><th>Só apoio (usada por outras classes)</th></tr>
+  <tr><td><code>Gateway</code>, <code>ArCondicionado</code>, <code>SensorTemperatura</code>, <code>Pdu</code>, <code>Cliente</code>, <code>Painel</code></td>
+      <td><code>Cadastro</code>, <code>HistoricoCsv</code>, <code>DescobertaFonte</code>, <code>Quadro</code>, <code>Rede</code>, <code>Config</code></td></tr>
+</table>
+<p class="peq">Origem do CSV: a ideia de gravar as leituras em arquivo e consultar o histórico veio do projeto de um colega; aqui foi
+reimplementada sobre o modelo de dados deste projeto (<code>Leitura</code> tipada, hora de chegada do gateway).</p>
+
+<!-- ============================ 3 ============================ -->
+<h2>3. Como compilar e executar</h2>
+<h3>Compilação</h3>
+<ul>
+  <li><code>mvn -q compile</code> faz duas coisas: o <code>protobuf-maven-plugin</code> baixa o <code>protoc</code> (compilador do Protobuf) e o plugin do gRPC,
+    gera o código Java em <code>target/generated-sources</code> e depois o <code>maven-compiler-plugin</code> compila tudo (Java 21).</li>
+  <li>O <code>os-maven-plugin</code> descobre o sistema operacional para baixar o <code>protoc</code> do tipo certo (Linux, Windows, Mac).</li>
+  <li>Versões: gRPC 1.68.0 e protobuf-java 3.25.5. Dependência extra <code>annotations-api</code> (escopo <i>provided</i>): o código gRPC gerado usa <code>@Generated</code>, que saiu do JDK.</li>
+</ul>
+<h3>Execução: <code>rodar.sh</code></h3>
+<p>Script de 4 linhas: entra na pasta do projeto, compila se <code>target/classes/dc</code> não existir, gera o classpath uma vez em <code>target/cp.txt</code>
+(<code>mvn dependency:build-classpath</code>) e executa <code>java $JAVA_OPTS -cp "target/classes:$(cat target/cp.txt)" dc.&lt;Classe&gt; args…</code>.
+Assim cada processo sobe em segundos, sem passar pelo Maven.</p>
+<table>
+  <tr><th>Comando</th><th>O que faz</th></tr>
+  <tr><td><code>./rodar.sh ArCondicionado ar-01</code></td><td>gRPC na porta 50051; o argumento é o id da fonte</td></tr>
+  <tr><td><code>./rodar.sh SensorTemperatura temp-rack-A A</code></td><td>id da fonte e rack; digitar <code>q</code> esquenta o rack, <code>n</code> normaliza</td></tr>
+  <tr><td><code>./rodar.sh Pdu pdu-rack-A A</code></td><td>id e rack; <code>q</code> = pico de consumo, <code>n</code> = normal</td></tr>
+  <tr><td><code>./rodar.sh Gateway</code></td><td>sobe descoberta, UDP :5008 e TCP :5009</td></tr>
+  <tr><td><code>./rodar.sh Cliente [ip-do-gateway]</code></td><td>CLI; sem argumento conecta em 127.0.0.1</td></tr>
+  <tr><td><code>./rodar.sh Painel</code></td><td>servidor HTTP em <code>http://localhost:8099/</code> para a demonstração no navegador</td></tr>
+</table>
+<h3>Opções <code>-D</code> (via <code>JAVA_OPTS</code>)</h3>
+<table>
+  <tr><th>Opção</th><th>Efeito</th></tr>
+  <tr><td><code>-Ddc.interface=wlo1</code></td><td>força a interface de rede do multicast (use o <b>mesmo</b> valor em todos os processos)</td></tr>
+  <tr><td><code>-Ddc.descoberta.s=10</code></td><td>repete o pedido de descoberta a cada 10 s em vez de 30 s (só o gateway)</td></tr>
+  <tr><td><code>-Ddc.csv=/caminho/leituras.csv</code></td><td>muda o arquivo do histórico (padrão: <code>data/leituras.csv</code>)</td></tr>
+</table>
+
+<!-- ============================ 4 ============================ -->
+<h2 class="nova">4. O contrato: <code>datacenter.proto</code></h2>
+<p>É o arquivo central: define <b>todas</b> as mensagens trocadas e o serviço gRPC. Sintaxe <code>proto3</code>, pacote <code>datacenter</code>,
+<code>java_multiple_files = true</code> (uma classe Java por mensagem) e <code>java_package = "dc.proto"</code>. Os números dos campos
+(<code>= 1</code>, <code>= 2</code>…) são o que vai no fio: o nome do campo não trafega, por isso a mensagem é compacta e, uma vez publicado, um número nunca deve ser reaproveitado.</p>
+
+<h3>Enums</h3>
+<table>
+  <tr><th>Enum</th><th>Valores</th><th>Para quê</th></tr>
+  <tr><td><code>TipoFonte</code></td><td>AR_CONDICIONADO, SENSOR_TEMPERATURA, PDU</td><td>tipo da fonte (o <code>0</code> é "desconhecido", exigência do proto3)</td></tr>
+  <tr><td><code>Grandeza</code></td><td>TEMPERATURA_C, POTENCIA_W</td><td>o que a leitura mede; unidades fixas (°C e W) evitam conversão</td></tr>
+  <tr><td><code>EstadoFonte</code></td><td>ATIVA, INATIVA</td><td>estado calculado pelo gateway</td></tr>
+  <tr><td><code>TipoConsulta</code></td><td>TEMPERATURA_MEDIA, RACK_MAIS_QUENTE, PICO_ENERGIA</td><td>as 3 consultas agregadas</td></tr>
+</table>
+<div class="por"><b>Por que enum e não texto?</b> Um enum ocupa 1 byte no fio, o compilador recusa valores errados e não há risco de
+"Temperatura" ≠ "temperatura". Texto livre exigiria validação manual em cada ponta.</div>
+
+<h3>Mensagens de descoberta (multicast)</h3>
+<table>
+  <tr><th>Mensagem</th><th>Campos</th><th>Observações</th></tr>
+  <tr><td><code>DescobertaSolicitacao</code></td><td><code>gateway_ip</code>, <code>gateway_porta_udp</code>, <code>nonce</code></td><td>O pedido já informa <b>para onde enviar as leituras</b>: a fonte não precisa de configuração</td></tr>
+  <tr><td><code>DescobertaResposta</code></td><td><code>fonte_id</code>, <code>tipo</code>, <code>ip</code>, <code>porta</code>, <code>controlavel</code>, <code>rack</code>, <code>intervalo_ms</code>, <code>optional estado_inicial</code>, <code>nonce</code></td><td>Tipo, IP, porta e estado inicial, como o enunciado pede. <code>porta</code> é a do gRPC (0 se não controlável). O <code>nonce</code> é cópia do pedido</td></tr>
+  <tr><td><code>EstadoAr</code></td><td><code>ligado</code>, <code>setpoint_c</code>, <code>ventilador_pct</code>, <code>intervalo_ms</code></td><td>Estado do ar-condicionado; usado na descoberta, nas leituras e na resposta do gRPC</td></tr>
+</table>
+
+<h3>Leitura (UDP)</h3>
+<table>
+  <tr><th>Campo</th><th>Significado</th></tr>
+  <tr><td><code>fonte_id</code>, <code>tipo</code>, <code>rack</code></td><td>quem mediu</td></tr>
+  <tr><td><code>grandeza</code>, <code>valor</code></td><td>o que e quanto (°C ou W)</td></tr>
+  <tr><td><code>timestamp_ms</code></td><td>hora da medição, no relógio da <b>fonte</b> (informativo; o gateway usa a hora de chegada)</td></tr>
+  <tr><td><code>evento</code></td><td><code>true</code> = envio imediato por cruzamento de limiar</td></tr>
+  <tr><td><code>intervalo_ms</code></td><td>período de envio vigente; base do critério de inatividade</td></tr>
+  <tr><td><code>seq</code></td><td>contador por fonte; permite ao gateway perceber perda, duplicação e reordenação</td></tr>
+  <tr><td><code>optional estado_ar</code></td><td>só o ar-condicionado preenche</td></tr>
+</table>
+
+<h3>Serviço gRPC</h3>
+<pre>service ArCondicionado {
+  rpc Configurar(ConfigurarRequest) returns (EstadoAr);
+  rpc ObterEstado(Vazio)            returns (EstadoAr);
+}
+message ConfigurarRequest {            // todos optional: ausente = não alterar
+  optional bool   ligado         = 1;
+  optional double setpoint_c     = 2;  // 10..35
+  optional uint32 ventilador_pct = 3;  // 0..100
+  optional uint32 intervalo_ms   = 4;  // 500..60000
+}</pre>
+<div class="por"><b>Por que <code>optional</code>?</b> No proto3 sem <code>optional</code>, <code>0</code> e "campo ausente" são indistinguíveis: não dá para diferenciar
+"ventilador a 0 %" de "não mexa no ventilador". Com <code>optional</code> há <code>hasX()</code>, o que permite <b>atualização parcial</b>.
+<b>Por que valores absolutos (e não "aumente 2 graus")?</b> Repetir o comando depois de um timeout dá o mesmo resultado: o comando é <b>idempotente</b>.</div>
+
+<h3>Cliente ↔ gateway (TCP)</h3>
+<table>
+  <tr><th>Mensagem</th><th>Conteúdo</th></tr>
+  <tr><td><code>PedidoCliente</code></td><td><code>oneof pedido</code>: <code>listar</code> (1), <code>comando</code> (2), <code>consulta</code> (3), <code>historico</code> (4)</td></tr>
+  <tr><td><code>RespostaCliente</code></td><td><code>ok</code>, <code>erro</code> e <code>oneof resposta</code>: <code>listar</code> (3), <code>comando</code> (4), <code>consulta</code> (5), <code>historico</code> (6)</td></tr>
+  <tr><td><code>FonteInfo</code></td><td>visão de uma fonte: id, tipo, ip, porta, controlável, rack, <b>estado</b> (ATIVA/INATIVA), <code>ultima_leitura_ms</code>, <code>optional estado_ar</code></td></tr>
+  <tr><td><code>ConsultaRequest</code> / <code>ConsultaResponse</code></td><td>tipo + <code>janela_s</code> (0 = 300 s) → <code>tem_dados</code>, <code>valor</code>, <code>referencia</code>, <code>amostras</code></td></tr>
+  <tr><td><code>HistoricoRequest</code> / <code>HistoricoResponse</code></td><td><code>fonte_id</code> ("" = todas) e <code>limite</code> (0 = 20) → lista de <code>LeituraRegistrada</code> (hora de chegada + <code>Leitura</code>)</td></tr>
+</table>
+<div class="por"><b>Por que <code>oneof</code>?</b> O TCP carrega um único tipo de mensagem (<code>PedidoCliente</code>); o <code>oneof</code> diz qual dos pedidos veio, sem precisar de um campo
+"tipo" manual, e o Java gera <code>getPedidoCase()</code> para o <code>switch</code>. <b>Por que <code>ok</code>/<code>erro</code> na resposta?</b> Um erro de negócio
+(fonte inexistente, valor recusado) não deve derrubar a conexão: volta como <code>ok = false</code> com a mensagem.
+<b>Por que <code>tem_dados</code>?</b> Média sem leituras na janela não é 0,0: é "sem dados".</div>
+
+<!-- ============================ 5 ============================ -->
+<h2 class="nova">5. Classe por classe, função por função</h2>
+
+<h3>5.1 <code>Config</code>: constantes compartilhadas</h3>
+<p>Classe <code>final</code> sem instância, só constantes: um ponto único para mudar portas e parâmetros.</p>
+<table>
+  <tr><th>Constante</th><th>Valor</th><th>Observação</th></tr>
+  <tr><td><code>MULTICAST_GRUPO</code> / <code>MULTICAST_PORTA</code></td><td>239.255.42.99 / 5007</td><td>faixa 239.0.0.0/8 é a de multicast de escopo administrativo (local)</td></tr>
+  <tr><td><code>GATEWAY_UDP_PORTA</code> / <code>GATEWAY_TCP_PORTA</code></td><td>5008 / 5009</td><td>leituras / cliente</td></tr>
+  <tr><td><code>AR_GRPC_PORTA_PADRAO</code></td><td>50051</td><td>porta convencional do gRPC</td></tr>
+  <tr><td><code>TOLERANCIA_INATIVIDADE</code></td><td>3</td><td>intervalos sem leitura até marcar INATIVA</td></tr>
+  <tr><td><code>TAMANHO_MAX_QUADRO</code></td><td>1 MiB</td><td>limite de um quadro TCP</td></tr>
+  <tr><td><code>JANELA_PADRAO_S</code></td><td>300</td><td>janela das consultas quando o cliente não informa</td></tr>
+  <tr><td><code>RETENCAO_MS</code></td><td>1 hora</td><td>quanto histórico fica na memória e é recarregado do CSV</td></tr>
+  <tr><td><code>JANELA_DESCOBERTA_MS</code> / <code>INTERVALO_DESCOBERTA_S</code></td><td>3000 / 30</td><td>quanto o gateway espera respostas / de quanto em quanto repete o pedido</td></tr>
+  <tr><td><code>CSV_CAMINHO</code>, <code>HISTORICO_PADRAO</code>, <code>HISTORICO_MAXIMO</code></td><td>data/leituras.csv, 20, 500</td><td>persistência e limites do <code>historico</code></td></tr>
+</table>
+
+<h3>5.2 <code>Rede</code>: interface de rede</h3>
+<table>
+  <tr><th>Método</th><th>O que faz</th></tr>
+  <tr><td><code>escolherInterface()</code></td><td>Se existir <code>-Ddc.interface</code>, usa essa interface. Senão, devolve a primeira que esteja ativa, aceite multicast, não seja loopback e tenha IPv4. Sem nenhuma, lança erro com a instrução de usar <code>-Ddc.interface</code></td></tr>
+  <tr><td><code>ipv4(ni)</code></td><td>Primeiro endereço IPv4 da interface, ou <code>null</code></td></tr>
+</table>
+<div class="por"><b>Por quê?</b> Um computador tem várias interfaces (Wi-Fi, Docker, loopback) e o multicast sai por <b>uma</b> só; se gateway e fontes escolherem interfaces diferentes, não se enxergam.
+Por isso a escolha é explícita e igual em todos os processos. Os processos também forçam <code>java.net.preferIPv4Stack=true</code> (bloco <code>static</code>) para que o Java use IPv4 de forma consistente.</div>
+
+<h3>5.3 <code>Quadro</code>: mensagens no TCP</h3>
+<table>
+  <tr><th>Método</th><th>O que faz</th></tr>
+  <tr><td><code>enviar(out, msg)</code></td><td>Serializa a mensagem, monta <code>[4 bytes big-endian com o tamanho][corpo]</code> e envia num <b>único</b> <code>write</code> + <code>flush</code></td></tr>
+  <tr><td><code>receber(in, parser)</code></td><td>Lê 4 bytes (<code>readInt</code>), confere o limite (0 a 1 MiB), lê exatamente o corpo (<code>readFully</code>) e decodifica com o parser da mensagem esperada</td></tr>
+  <tr><td><code>QuadroInvalidoException</code></td><td>Tamanho fora do limite: o fluxo perdeu o alinhamento e só resta <b>fechar a conexão</b></td></tr>
+</table>
+<div class="por"><b>Por que 4 bytes de tamanho?</b> TCP é um <b>fluxo de bytes</b>: uma mensagem pode chegar em pedaços ou duas podem chegar coladas; e o Protobuf não marca onde termina.
+O prefixo de tamanho resolve as duas coisas. <b><code>readFully</code></b> porque um <code>read</code> simples pode devolver só parte do quadro.
+<b>Limite de 1 MiB</b> para que um cliente defeituoso (ou malicioso) não faça o gateway alocar 2 GiB. <b>Conteúdo inválido com tamanho válido</b> não derruba a conexão: o quadro já foi consumido, o fluxo segue alinhado.</div>
+
+<h3>5.4 <code>DescobertaFonte</code>: a fonte na descoberta</h3>
+<p>Implementa <code>Runnable</code>; roda numa thread própria em cada fonte.</p>
+<table>
+  <tr><th>Parte</th><th>O que faz</th></tr>
+  <tr><td>Construtor</td><td>Recebe um <code>Supplier</code> que produz a resposta (é <i>Supplier</i> porque o estado do ar-condicionado muda), a interface de rede e um <i>callback</i> chamado a cada pedido válido</td></tr>
+  <tr><td><code>run()</code></td><td>Cria um <code>MulticastSocket</code> com <code>setReuseAddress(true)</code>, liga na porta 5007 e entra no grupo 239.255.42.99 pela interface escolhida. Em laço: recebe um datagrama, tenta decodificar como <code>DescobertaSolicitacao</code> (inválido ou sem IP/porta de gateway: ignora), chama o callback e responde por <b>unicast</b> ao endereço de origem do datagrama, com o <code>nonce</code> copiado do pedido</td></tr>
+</table>
+<div class="por"><b>Por que <code>setReuseAddress</code>?</b> Na demonstração as 5 fontes rodam na mesma máquina e todas precisam escutar a mesma porta do grupo.
+<b>Para que serve o callback?</b> A fonte <b>aprende</b> o IP e a porta UDP do gateway a partir do pedido: não há configuração manual do destino das leituras.</div>
+
+<h3>5.5 <code>ArCondicionado</code>: a fonte controlável</h3>
+<p><b>Threads:</b> (1) <code>descoberta</code> (<code>DescobertaFonte</code>); (2) pool do gRPC, que atende <code>Configurar</code>/<code>ObterEstado</code>; (3) a principal, que simula a temperatura e envia leituras.
+O estado (ligado, setpoint, ventilador, intervalo, temperatura) é compartilhado e todo acesso é <code>synchronized</code>.</p>
+<table>
+  <tr><th>Método</th><th>O que faz</th></tr>
+  <tr><td><code>main</code></td><td>Lê o id (padrão <code>ar-01</code>) e a porta gRPC (padrão 50051) e chama <code>executar</code></td></tr>
+  <tr><td><code>executar(id, porta)</code></td><td>Escolhe a interface, sobe o servidor gRPC, cria a thread de descoberta (a resposta anuncia tipo, IP, porta gRPC, <code>controlavel = true</code>, intervalo e estado atual) e entra no laço de leituras</td></tr>
+  <tr><td><code>estado()</code></td><td>Monta o <code>EstadoAr</code> atual</td></tr>
+  <tr><td><code>validar(req)</code></td><td>Devolve a mensagem de erro se algum campo <b>presente</b> estiver fora da faixa (setpoint 10–35 °C, ventilador 0–100 %, intervalo 500–60000 ms); senão <code>null</code></td></tr>
+  <tr><td><code>aplicar(req)</code></td><td>Aplica só os campos presentes (<code>hasX()</code>) e devolve o novo estado</td></tr>
+  <tr><td><code>avancar(dt)</code></td><td>Modelo físico simples: a temperatura tende ao setpoint se ligado, ou a 32 °C se desligado; o ventilador acelera a convergência; mais um ruído pequeno</td></tr>
+  <tr><td><code>Servico.configurar</code></td><td>Valida (erro vira <code>Status.INVALID_ARGUMENT</code>), aplica, registra no log e responde com o novo <code>EstadoAr</code></td></tr>
+  <tr><td><code>Servico.obterEstado</code></td><td>Devolve o <code>EstadoAr</code> atual (definido no contrato; o gateway não o usa, veja a seção 10)</td></tr>
+  <tr><td><code>enviarLeituras(id)</code></td><td>Laço a cada 100 ms: avança a temperatura; se já passou o intervalo e o gateway é conhecido, monta uma <code>Leitura</code> (com <code>seq</code> crescente e <code>estado_ar</code> anexado) e a envia por <code>DatagramSocket</code></td></tr>
+</table>
+<div class="por"><b>Por que o ar continua enviando leituras quando está desligado?</b> Para o gateway distinguir <b>"desligado por comando"</b> (continua enviando, com <code>ligado=false</code>)
+de <b>"caiu"</b> (parou de enviar). Se parasse de enviar ao ser desligado, ficaria INATIVA e seria impossível diferenciar os dois casos.
+<b>Por que validar na fonte e não no gateway?</b> A fonte é quem conhece seus limites físicos; o gateway não duplica a regra e o erro volta pelo próprio gRPC.</div>
+
+<h3>5.6 <code>SensorTemperatura</code>: fonte contínua com evento</h3>
+<p><b>Threads:</b> descoberta, teclado (só para a demonstração) e a principal. Argumentos: id e rack.</p>
+<table>
+  <tr><th>Método</th><th>O que faz</th></tr>
+  <tr><td><code>executar(id, rack)</code></td><td>Monta a resposta de descoberta (tipo sensor, <code>porta = 0</code>, <code>controlavel = false</code>, rack, intervalo 2000 ms), cria as threads de descoberta e de teclado e chama <code>enviarLeituras</code></td></tr>
+  <tr><td><code>lerTeclado()</code></td><td>Lê o stdin: <code>q</code> muda a base de temperatura para 29 °C (rack esquentando) e <code>n</code> volta para 22 °C</td></tr>
+  <tr><td><code>enviarLeituras(id, rack)</code></td><td>Amostra a cada 200 ms: valor = base ± 1 °C. Envia (a) <b>periodicamente</b>, a cada 2 s, e (b) <b>imediatamente</b> quando o estado "acima de 27 °C" muda, nos dois sentidos, marcando <code>evento = true</code></td></tr>
+</table>
+<div class="por"><b>Por que 27 °C?</b> É o limite superior da faixa de temperatura recomendada para equipamentos de TI segundo a ASHRAE (TC 9.9).
+<b>Por que evento nos dois sentidos?</b> Quem opera precisa saber quando o problema <b>começou</b> e quando <b>acabou</b>.
+<b>Por que amostrar a cada 200 ms se envia a cada 2 s?</b> Para detectar o cruzamento do limiar rápido, sem esperar o próximo envio periódico.</div>
+
+<h3>5.7 <code>Pdu</code>: fonte contínua de potência</h3>
+<p>Mesma estrutura do sensor, sem eventos: a cada 2 s envia o consumo (base 3500 W ± 150 W; <code>q</code> = 6500 W de pico, <code>n</code> = normal). Grandeza <code>POTENCIA_W</code>, tipo <code>PDU</code>.
+Serve ao tipo "contínua, sem evento" e à consulta <code>pico</code>.</p>
+
+<h3>5.8 <code>Gateway</code>: o processo central</h3>
+<p><b>Threads:</b> <code>udp-leituras</code>; <code>tcp-clientes</code> (aceita conexões e cria <b>uma thread por cliente</b>); um agendador que roda <code>descobrir()</code> a cada 30 s;
+e a thread <code>main</code>, que só prepara tudo e termina.</p>
+<table>
+  <tr><th>Método</th><th>O que faz</th></tr>
+  <tr><td><code>main</code></td><td>Cria o <code>Gateway</code>; <b>recarrega do CSV</b> a última hora de leituras para o <code>Cadastro</code>; sobe as threads UDP e TCP <b>antes</b> da descoberta (para não perder leituras de fontes que respondam rápido); agenda a descoberta com <code>scheduleWithFixedDelay</code>, começando em 0 s</td></tr>
+  <tr><td><code>descobrir()</code></td><td>Escolhe a interface; sorteia um <code>nonce</code>; monta a <code>DescobertaSolicitacao</code> (IP do gateway, porta UDP 5008, nonce); abre um <code>MulticastSocket</code> de porta efêmera e envia ao grupo; durante 3 s recebe respostas, descarta as de nonce diferente e cadastra as novas (<code>[descoberta] nova fonte</code>)</td></tr>
+  <tr><td><code>receberLeituras()</code></td><td>Escuta UDP :5008. Para cada datagrama: decodifica <code>Leitura</code>; descarta se não tem <code>fonte_id</code> ou grandeza; chama <code>cadastro.registrarLeitura</code>; <b>grava no CSV</b>; mostra no log e avisa anomalias de <code>seq</code></td></tr>
+  <tr><td><code>servirClientes()</code></td><td>Abre o <code>ServerSocket</code> :5009 e, a cada conexão, cria uma thread que executa <code>atender</code></td></tr>
+  <tr><td><code>atender(socket)</code></td><td>Laço: lê um <code>PedidoCliente</code> com <code>Quadro.receber</code>, responde com <code>Quadro.enviar</code>. Conteúdo inválido → resposta de erro e a conexão segue; fim da conexão → log; quadro fora do limite → fecha</td></tr>
+  <tr><td><code>processar(pedido)</code></td><td><code>switch</code> pelo tipo do <code>oneof</code>: <code>LISTAR</code> → <code>cadastro.listar()</code>; <code>COMANDO</code> → <code>comandar</code>; <code>CONSULTA</code> → <code>cadastro.consultar</code>; <code>HISTORICO</code> → <code>historico</code>; vazio → erro</td></tr>
+  <tr><td><code>comandar(cmd)</code></td><td>Confere se a fonte existe e é controlável; abre um canal gRPC até o IP e a porta <b>descobertos</b>; chama <code>configurar</code> com prazo de 3 s; guarda o estado devolvido. <code>INVALID_ARGUMENT</code> vira "fonte recusou o comando"; qualquer outro erro vira "fonte não respondeu" (ex.: <code>UNAVAILABLE</code>). Fecha o canal no <code>finally</code></td></tr>
+  <tr><td><code>historico(req)</code></td><td>Lê as últimas leituras do CSV (<code>csv.ultimos</code>), limitadas a 500, e as devolve em <code>HistoricoResponse</code></td></tr>
+  <tr><td><code>erro(msg)</code></td><td>Constrói uma <code>RespostaCliente</code> com <code>ok = false</code></td></tr>
+</table>
+<div class="por"><b>Por que o gateway usa a porta efêmera na descoberta, e não a 5008?</b> O datagrama Protobuf não carrega o tipo da mensagem; se <code>DescobertaResposta</code> e <code>Leitura</code> chegassem no mesmo socket,
+seria impossível distinguir uma da outra. Portas separadas resolvem. <b>Por que repetir a descoberta?</b> UDP perde pacotes e fontes podem subir depois do gateway.
+<b>Por que o prazo de 3 s no gRPC?</b> Sem prazo, uma fonte travada deixaria o cliente esperando para sempre. <b>Por que um canal por comando?</b> Simplicidade; com muitos comandos valeria reutilizar o canal (anotado no código).</div>
+
+<h3>5.9 <code>Cadastro</code>: o estado em memória</h3>
+<p>Guarda as fontes descobertas e o histórico recente. <b>Todos os métodos públicos são <code>synchronized</code></b>, porque três tipos de thread mexem aqui ao mesmo tempo (descoberta, UDP, clientes TCP).
+O histórico é uma <code>Deque</code> de <code>Registro(leitura, recebidoEm)</code> em ordem de chegada.</p>
+<table>
+  <tr><th>Método</th><th>O que faz</th></tr>
+  <tr><td><code>registrarFonte(r)</code></td><td>Guarda/atualiza a fonte; na primeira vez, marca o instante da descoberta. Devolve <code>true</code> se for nova</td></tr>
+  <tr><td><code>registrarLeitura(l, recebidoEm)</code></td><td>Confere o <code>seq</code> (duplicada, fora de ordem, perdida; <code>seq 0</code> = fonte reiniciou); adiciona ao histórico; <b>descarta o que passou de 1 h</b>; atualiza última leitura, intervalo e estado do ar. Devolve a descrição da anomalia, ou <code>null</code></td></tr>
+  <tr><td><code>restaurar(antigas)</code></td><td>Repõe no histórico as leituras recarregadas do CSV. <b>Não</b> mexe em última leitura nem em <code>seq</code></td></tr>
+  <tr><td><code>atualizarEstadoAr(id, estado)</code></td><td>Guarda o estado devolvido por um comando gRPC bem-sucedido</td></tr>
+  <tr><td><code>fonte(id)</code>, <code>fontes()</code>, <code>totalLeituras()</code></td><td>Consultas simples</td></tr>
+  <tr><td><code>consultar(tipo, janelaS)</code></td><td>As 3 agregações sobre as leituras que <b>chegaram</b> nos últimos N s (0 = 300 s). <code>TEMPERATURA_MEDIA</code>: média dos sensores de temperatura. <code>RACK_MAIS_QUENTE</code>: rack de maior média. <code>PICO_ENERGIA</code>: maior potência e qual PDU. Sem leituras → <code>tem_dados = false</code></td></tr>
+  <tr><td><code>listar()</code> / <code>info(id)</code></td><td>Visão das fontes para o cliente, com o estado ATIVA/INATIVA calculado <b>na hora</b></td></tr>
+  <tr><td><code>montar(d, agora)</code> (privado)</td><td><b>Critério de inatividade:</b> a fonte está ATIVA se <code>agora − max(última leitura, descoberta) ≤ 3 × intervalo</code>, com o intervalo anunciado pela própria fonte</td></tr>
+</table>
+<div class="por"><b>Por que 3 intervalos?</b> Tolera até duas perdas seguidas de UDP sem falso alarme, mas detecta a queda em segundos. O intervalo vem da fonte (e é atualizado a cada leitura),
+então se o operador mudar o intervalo do ar-condicionado, o critério acompanha. <b>Por que a hora de chegada e não o <code>timestamp_ms</code> da fonte?</b> Cada máquina tem seu relógio; comparar horas de relógios diferentes dá resultados errados.
+<b>Por que as leituras do ar-condicionado não entram nas médias?</b> Elas medem o ar de saída, não a temperatura de um rack. <b>Por que a contagem começa na descoberta?</b> Para uma fonte que nunca enviou nada também ser marcada INATIVA.</div>
+
+<h3>5.10 <code>HistoricoCsv</code>: persistência</h3>
+<p>Arquivo <code>data/leituras.csv</code>, uma linha por leitura, em ordem de chegada. Colunas: <code>recebido_em</code> (ISO, só para leitura humana), <code>recebido_em_ms</code>, <code>fonte_id</code>, <code>tipo</code>, <code>rack</code>, <code>grandeza</code>, <code>valor</code>,
+<code>timestamp_ms</code>, <code>evento</code>, <code>seq</code>, <code>intervalo_ms</code>. Métodos públicos <code>synchronized</code>.</p>
+<table>
+  <tr><th>Método</th><th>O que faz</th></tr>
+  <tr><td><code>gravar(registro)</code></td><td>Acrescenta uma linha (abre o arquivo e escreve o cabeçalho na primeira vez) e dá <code>flush</code>. Se o disco falhar, avisa <b>uma vez</b> e segue só em memória: a recepção UDP nunca cai por causa do arquivo</td></tr>
+  <tr><td><code>carregar(desdeMs)</code></td><td>Lê o arquivo e devolve as leituras com <code>recebido_em_ms ≥ desdeMs</code>. Usado na subida do gateway (última hora)</td></tr>
+  <tr><td><code>ultimos(fonteId, limite)</code></td><td>As últimas <i>n</i> leituras do arquivo inteiro, de uma fonte ou de todas. Alimenta o comando <code>historico</code></td></tr>
+  <tr><td><code>lerLinhas</code>, <code>interpretar</code></td><td>Percorrem e convertem as linhas; linha truncada ou editada à mão é <b>pulada</b> e contada, sem derrubar nada</td></tr>
+  <tr><td><code>campo</code>, <code>dividir</code></td><td>Escape e leitura de campos no padrão CSV (RFC 4180): aspas só quando há vírgula, aspas ou quebra de linha</td></tr>
+</table>
+<div class="por"><b>Por que CSV?</b> Simples, legível por qualquer editor e planilha, sem dependência nova nem servidor de banco; basta acrescentar linhas ao final (<i>append</i>), o que é rápido e seguro.
+<b>Por que só a última hora volta para a memória?</b> É a mesma retenção da memória; assim o consumo não cresce sem limite. <b>Por que não restaurar a "última leitura" de cada fonte?</b> Senão uma fonte desligada
+pareceria ATIVA logo após reiniciar o gateway. <b>Custo assumido:</b> o arquivo só cresce e o <code>historico</code> lê o arquivo todo (aceitável para esse volume).</div>
+
+<h3>5.11 <code>Cliente</code>: o terminal do operador</h3>
+<table>
+  <tr><th>Método</th><th>O que faz</th></tr>
+  <tr><td><code>main</code></td><td>Conecta ao gateway (padrão 127.0.0.1:5009) com <b>uma conexão que fica aberta</b>; em laço, lê a linha digitada, monta o pedido, envia e mostra a resposta. <code>ajuda</code> e <code>sair</code> são locais</td></tr>
+  <tr><td><code>montarPedido(p)</code></td><td>Traduz o texto digitado em <code>PedidoCliente</code>: <code>listar</code>; <code>ligar/desligar &lt;id&gt;</code>; <code>setpoint</code>, <code>ventilador</code>, <code>intervalo</code>; <code>consulta media|rack|pico [janela_s]</code>; <code>historico [id] [n]</code>. Erro de digitação mostra a mensagem e continua</td></tr>
+  <tr><td><code>exigir</code>, <code>comando</code>, <code>numero</code></td><td>Auxiliares: conferir argumentos, montar <code>ComandoRequest</code>, converter número com mensagem clara</td></tr>
+  <tr><td><code>mostrar(resposta)</code></td><td>Imprime a tabela de fontes, o comando aplicado, o resultado da consulta ou o histórico; <code>ok = false</code> imprime <code>ERRO: …</code></td></tr>
+  <tr><td><code>linha(f)</code></td><td>Formata uma fonte (id, tipo, endereço, rack, estado, hora da última leitura, detalhe do ar-condicionado)</td></tr>
+</table>
+
+<h3>5.12 <code>Painel</code>: extra para a demonstração</h3>
+<p>Servidor HTTP (<code>com.sun.net.httpserver</code>, JDK puro) que liga a página <code>demo-online.html</code> aos processos Java reais, pois um navegador não consegue subir processos.
+Escuta só em <code>127.0.0.1:8099</code>.</p>
+<table>
+  <tr><th>Rota</th><th>Função</th></tr>
+  <tr><td><code>GET /</code></td><td>serve a página, com um token sorteado embutido</td></tr>
+  <tr><td><code>GET /eventos</code></td><td>fluxo SSE (<i>Server-Sent Events</i>): cada linha de saída de um processo vira um evento</td></tr>
+  <tr><td><code>POST /lancar</code></td><td>sobe <code>./rodar.sh &lt;Classe&gt; args</code> num terminal</td></tr>
+  <tr><td><code>POST /entrada</code></td><td>escreve uma linha no stdin do processo (o <code>q</code>/<code>n</code> dos sensores, comandos do cliente)</td></tr>
+  <tr><td><code>POST /parar</code></td><td>encerra o processo do terminal</td></tr>
+  <tr><td><code>POST /quadro-gigante</code></td><td>teste de robustez: envia ao gateway um quadro TCP declarando 2 GiB</td></tr>
+</table>
+<div class="por"><b>Segurança (o professor pode perguntar):</b> só escuta em loopback; toda chamada exige o token sorteado a cada execução; o cabeçalho <code>Host</code> é conferido (contra <i>DNS rebinding</i>);
+só as cinco classes do projeto podem subir, com argumentos filtrados por expressão regular; a página com o token não envia cabeçalhos CORS, então outro site não consegue lê-la.
+O Painel <b>não faz parte do sistema distribuído</b> do enunciado: é só uma conveniência para a demonstração.</div>
+
+<!-- ============================ 6 ============================ -->
+<h2 class="nova">6. Fluxos ponta a ponta</h2>
+
+<h3>6.1 Subida e descoberta</h3>
+<ol>
+  <li>Cada fonte sobe e cria a thread de <code>DescobertaFonte</code>, que entra no grupo multicast e espera. Ainda <b>não envia nada</b>: não sabe o destino.</li>
+  <li><code>Gateway.main</code> recarrega o CSV, sobe as threads UDP/TCP e agenda <code>descobrir()</code>.</li>
+  <li><code>descobrir()</code> envia a <code>DescobertaSolicitacao</code> (IP do gateway, porta 5008, <code>nonce</code>) ao grupo.</li>
+  <li>Cada fonte decodifica o pedido, <b>guarda o destino das leituras</b> e responde por unicast com a <code>DescobertaResposta</code> (nonce copiado).</li>
+  <li>O gateway, durante 3 s, confere o nonce e chama <code>cadastro.registrarFonte</code>. A cada 30 s repete tudo.</li>
+</ol>
+<p class="peq">Consequência: uma fonte só começa a enviar leituras depois do primeiro pedido de descoberta. Se o gateway subir por último, as fontes passam a enviar logo na primeira rodada.</p>
+
+<h3>6.2 Uma leitura (periódica ou evento)</h3>
+<ol>
+  <li>A fonte monta a <code>Leitura</code> (<code>seq</code>, valor, <code>evento</code>…) e envia <b>um datagrama UDP</b> a gateway:5008.</li>
+  <li><code>Gateway.receberLeituras</code> decodifica e valida; <code>Cadastro.registrarLeitura</code> confere o <code>seq</code>, guarda e atualiza a última leitura da fonte.</li>
+  <li><code>HistoricoCsv.gravar</code> acrescenta a linha ao CSV. O log mostra <code>&lt;&lt;&lt; EVENTO</code> quando <code>evento = true</code>.</li>
+</ol>
+
+<h3>6.3 Comando ao ar-condicionado</h3>
+<ol>
+  <li>Operador digita <code>setpoint ar-01 20</code> → <code>Cliente.montarPedido</code> cria <code>PedidoCliente.comando</code> → <code>Quadro.enviar</code> (TCP).</li>
+  <li><code>Gateway.atender</code> recebe → <code>processar</code> → <code>comandar</code>: acha a fonte no <code>Cadastro</code> e abre um canal gRPC até o IP:porta descobertos.</li>
+  <li>A fonte executa <code>Servico.configurar</code>: <code>validar</code> → <code>aplicar</code> → responde com o novo <code>EstadoAr</code> (ou <code>INVALID_ARGUMENT</code>).</li>
+  <li>O gateway guarda o estado (<code>atualizarEstadoAr</code>) e responde ao cliente <code>ok = true</code> com a <code>FonteInfo</code> atualizada, ou <code>ok = false</code> com o motivo.</li>
+</ol>
+
+<h3>6.4 Consulta agregada e histórico</h3>
+<ol>
+  <li><code>consulta media 10</code> → <code>ConsultaRequest(TEMPERATURA_MEDIA, 10)</code> → <code>Cadastro.consultar</code> percorre o histórico em memória (só leituras que chegaram nos últimos 10 s) → <code>ConsultaResponse</code>.</li>
+  <li><code>historico temp-rack-A 3</code> → <code>HistoricoRequest</code> → <code>Gateway.historico</code> → <code>HistoricoCsv.ultimos</code> (lê o arquivo) → <code>HistoricoResponse</code>.</li>
+  <li>Diferença: a <b>consulta</b> usa a memória (última hora); o <b>histórico</b> usa o arquivo (inclui execuções anteriores).</li>
+</ol>
+
+<h3>6.5 Reinício do gateway</h3>
+<ol>
+  <li>O gateway é encerrado: o <code>Cadastro</code> (memória) se perde; o CSV permanece.</li>
+  <li>Ao subir de novo, <code>main</code> chama <code>csv.carregar(agora − 1 h)</code> e <code>cadastro.restaurar(…)</code>: as consultas por janela voltam a funcionar.</li>
+  <li>As fontes são redescobertas na primeira rodada (até 30 s no pior caso, com o intervalo padrão); as fontes que continuaram enviando voltam ao <code>listar</code> assim que cadastradas.</li>
+</ol>
+
+<h3>6.6 Falha de uma fonte</h3>
+<ol>
+  <li>O processo da fonte é morto: param as leituras UDP (e o gRPC, se for o ar-condicionado).</li>
+  <li>Comando a essa fonte → <code>UNAVAILABLE</code> (após no máximo 3 s) → o cliente vê "fonte … não respondeu"; o gateway continua de pé.</li>
+  <li>Depois de mais de <b>3 intervalos</b> sem leitura (cerca de 6 s com o intervalo de 2 s), <code>listar</code> mostra a fonte como <code>INATIVA</code>. Se ela voltar, vira <code>ATIVA</code> na próxima leitura.</li>
+</ol>
+
+<!-- ============================ 7 ============================ -->
+<h2>7. Concorrência: quem roda em qual thread</h2>
+<table>
+  <tr><th>Processo</th><th>Threads</th><th>Estado compartilhado e proteção</th></tr>
+  <tr><td>Gateway</td><td><code>udp-leituras</code>; <code>tcp-clientes</code> + uma thread por cliente; agendador da descoberta</td><td><code>Cadastro</code> (<code>synchronized</code>) e <code>HistoricoCsv</code> (<code>synchronized</code>, outro cadeado)</td></tr>
+  <tr><td>ArCondicionado</td><td>principal (leituras); <code>descoberta</code>; pool do gRPC</td><td>estado do ar (<code>synchronized</code>); <code>gateway</code> é <code>volatile</code></td></tr>
+  <tr><td>SensorTemperatura / Pdu</td><td>principal; <code>descoberta</code>; <code>teclado</code></td><td><code>base</code> e <code>gateway</code> são <code>volatile</code> (uma thread escreve, outra lê)</td></tr>
+  <tr><td>Cliente</td><td>uma só</td><td>nenhum</td></tr>
+</table>
+<ul>
+  <li><b>Sem deadlock:</b> o gateway pega o cadeado do <code>Cadastro</code> e depois, em outro passo, o do <code>HistoricoCsv</code>; nunca um dentro do outro.</li>
+  <li><b>Por que uma thread por cliente TCP?</b> Simples e suficiente para um operador (ou poucos). Com centenas de clientes valeria um pool ou E/S assíncrona. <b>Por que não usar uma thread só para tudo?</b> <code>accept</code> e <code>receive</code> bloqueiam: uma thread parada esperando um cliente impediria de receber leituras.</li>
+  <li><b><code>volatile</code></b> garante que a thread que lê enxergue o valor que a outra escreveu; <b><code>synchronized</code></b> garante exclusão mútua em operações com mais de um passo.</li>
+</ul>
+
+<!-- ============================ 8 ============================ -->
+<h2 class="nova">8. Decisões e justificativas (perguntas prováveis)</h2>
+<p>O professor deve perguntar o <b>motivo</b> de cada decisão. Respostas curtas, prontas para falar.</p>
+
+<p class="q">1. Por que Java?</p>
+<p>Uma linguagem só para os cinco processos, com sockets, threads e multicast na biblioteca padrão, e suporte maduro a Protobuf e gRPC. O trabalho anterior da disciplina já era em Java (sockets e Protobuf), então reaproveitei o conhecimento.
+Tipagem estática ajuda aqui: o código gerado do <code>.proto</code> é fortemente tipado e o compilador acusa campo errado. O enunciado trata várias linguagens como pontuação extra, não como requisito, então priorizei o escopo mínimo bem feito.</p>
+
+<p class="q">2. Por que Protocol Buffers?</p>
+<p>É exigido pelo enunciado, e também é uma boa escolha: formato binário compacto (importante em UDP, onde cada datagrama é uma mensagem), contrato único e explícito (<code>.proto</code>), geração automática de código para as duas pontas e evolução compatível (campos novos com números novos não quebram quem ainda não os conhece; foi o que aconteceu ao acrescentar o histórico).</p>
+
+<p class="q">3. Por que um único <code>.proto</code> para tudo?</p>
+<p>Garante que todos os processos falem exatamente a mesma língua e que uma mudança no contrato apareça em tempo de compilação em todos. Os tipos comuns (<code>EstadoAr</code>, enums) são reutilizados em vários canais.</p>
+
+<p class="q">4. Por que multicast na descoberta?</p>
+<p>O gateway não conhece os IPs das fontes. Com multicast ele faz uma pergunta a um grupo e quem estiver escutando responde, sem lista de endereços e sem configuração. Fontes que entram depois são achadas na rodada seguinte.</p>
+
+<p class="q">5. Por que a resposta da descoberta é unicast, e por que existe o <i>nonce</i>?</p>
+<p>Só o gateway precisa da resposta; multicast na volta geraria tráfego inútil para todas as fontes. O <i>nonce</i> (número sorteado por rodada, devolvido pela fonte) impede que o gateway confunda uma resposta atrasada de uma rodada anterior com a atual.</p>
+
+<p class="q">6. Por que UDP para as leituras?</p>
+<p>São frequentes, pequenas e a perda de uma leitura é tolerável (a próxima chega em 2 s). UDP não exige conexão por fonte nem consome recursos do gateway por dispositivo, e combina com dispositivos simples. O preço é que a rede pode perder, duplicar ou reordenar datagramas: por isso a leitura leva um <code>seq</code> e o gateway o confere e registra a anomalia.</p>
+
+<p class="q">7. Por que o evento imediato existe?</p>
+<p>Esperar até 2 s para avisar que o rack passou de 27 °C é tempo demais num data center. O sensor envia uma leitura extra, com <code>evento = true</code>, no instante em que cruza o limiar (e de novo quando volta ao normal).</p>
+
+<p class="q">8. Por que gRPC para o comando e não UDP ou TCP "à mão"?</p>
+<p>Comando exige resposta confiável e verificável. O gRPC dá contrato tipado (definido no <code>.proto</code>), códigos de erro padronizados (<code>INVALID_ARGUMENT</code>, <code>UNAVAILABLE</code>), prazo por chamada e geração de cliente e servidor. Também é um requisito do enunciado para a fonte controlável.</p>
+
+<p class="q">9. Por que TCP com 4 bytes de tamanho entre cliente e gateway?</p>
+<p>TCP é um fluxo de bytes, sem fronteira de mensagem, e o Protobuf não indica onde termina. O prefixo de 4 bytes diz quantos bytes vêm a seguir. O limite de 1 MiB protege o gateway de um tamanho absurdo. (Alternativa válida: <code>writeDelimitedTo</code> do Protobuf, que usa um tamanho em <i>varint</i>; escolhi 4 bytes fixos porque é independente de biblioteca e fácil de explicar e de mostrar em hexadecimal.)</p>
+
+<p class="q">10. Por que <code>optional</code> e <code>oneof</code> no contrato?</p>
+<p><code>optional</code> distingue "campo ausente" de "zero" e permite atualização parcial no comando. <code>oneof</code> permite que um único tipo de mensagem no TCP carregue pedidos diferentes, e o compilador força a tratar cada caso.</p>
+
+<p class="q">11. Por que o comando carrega valores absolutos?</p>
+<p>Repetir um comando por causa de um timeout não tem efeito colateral: "setpoint = 20" repetido continua 20. É a propriedade de idempotência, importante numa rede em que não se sabe se o comando chegou.</p>
+
+<p class="q">12. Por que a fonte valida o comando?</p>
+<p>Quem conhece os limites do equipamento é a própria fonte. O gateway repassa; se a fonte recusar, devolve <code>INVALID_ARGUMENT</code> e o gateway entrega o motivo ao operador, sem duplicar regras nem divergir.</p>
+
+<p class="q">13. Como o gateway sabe que uma fonte caiu? Por que 3 intervalos?</p>
+<p>Fonte sem nenhuma leitura há mais de 3 intervalos <b>anunciados por ela</b> é marcada <code>INATIVA</code>. Três intervalos tolera duas perdas seguidas de UDP sem falso alarme e ainda detecta a queda em poucos segundos. Limitação: o critério por tempo não distingue fonte caída de rede caída.</p>
+
+<p class="q">14. Por que o ar-condicionado continua enviando leituras quando é desligado?</p>
+<p>Para distinguir "desligado por comando" de "caiu". Se parasse de enviar, as duas situações seriam idênticas para o gateway.</p>
+
+<p class="q">15. Por que o gateway usa a hora de chegada, e não o <code>timestamp_ms</code> da fonte?</p>
+<p>Cada máquina tem um relógio, possivelmente desacertado. Para decidir "isso aconteceu nos últimos 10 s" e "essa fonte está viva", o gateway precisa de uma única referência de tempo: o seu próprio relógio.</p>
+
+<p class="q">16. Por que 27 °C?</p>
+<p>É o topo da faixa de temperatura de entrada recomendada pela ASHRAE (TC 9.9) para equipamentos de TI. Acima disso o risco para o equipamento aumenta.</p>
+
+<p class="q">17. Por que <code>synchronized</code> no <code>Cadastro</code> inteiro, e não um cadeado por estrutura?</p>
+<p>Simplicidade e correção: as operações são curtas e o volume é baixo (algumas leituras por segundo), então a contenção é desprezível. Cadeados finos aumentariam o risco de deadlock e de inconsistência entre as estruturas.</p>
+
+<p class="q">18. Por que guardar as leituras em CSV?</p>
+<p>Para o histórico sobreviver a reinício do gateway, sem trazer um banco de dados. CSV é legível por qualquer ferramenta e escrever no final do arquivo é barato. Ao reiniciar, só a última hora volta para a memória (igual à retenção em memória) e a "última leitura" das fontes <b>não</b> é restaurada, para que uma fonte desligada não pareça ativa. O arquivo cresce indefinidamente; num uso longo seria preciso rotacioná-lo ou usar um banco.</p>
+
+<p class="q">19. Por que as fontes são processos separados?</p>
+<p>O enunciado pede partes independentes que se comunicam por rede. Processos separados falham, reiniciam e são desligados de forma independente, o que permite demonstrar a detecção de falha e a descoberta de fontes que entram depois.</p>
+
+<p class="q">20. Por que as consultas ignoram o ar-condicionado?</p>
+<p>A temperatura que ele reporta é a do ar de saída, não a de um rack. A "temperatura média" e o "rack mais quente" são sobre racks, então só os sensores de rack entram.</p>
+
+<p class="q">21. E o que acontece se a janela da consulta não tiver leituras?</p>
+<p>A resposta traz <code>tem_dados = false</code> e o cliente escreve "sem dados nos últimos N s". Não se inventa um valor (como 0,0).</p>
+
+<!-- ============================ 9 ============================ -->
+<h2>9. Os dispositivos (fontes de dados)</h2>
+<p>O professor disse que, se o trabalho tem dispositivos IoT, vai fazer perguntas sobre eles e pediu um vídeo. As fontes deste trabalho são <b>dispositivos simulados por software</b>: cada um é um processo
+Java independente que se comporta como o equipamento real, e o protocolo que falam é o que um dispositivo físico implementaria. Diga isso com franqueza.</p>
+<table>
+  <tr><th>Dispositivo</th><th>Representa</th><th>Controlável?</th><th>O que envia</th><th>Como mexer na demonstração</th></tr>
+  <tr><td><code>ar-01</code></td><td>Ar-condicionado de precisão (CRAC)</td><td>Sim (gRPC)</td><td>Temperatura do ar a cada 2 s + estado (<code>EstadoAr</code>)</td><td><code>ligar</code>, <code>desligar</code>, <code>setpoint</code>, <code>ventilador</code>, <code>intervalo</code></td></tr>
+  <tr><td><code>temp-rack-A/B</code></td><td>Sensor de temperatura de rack</td><td>Não</td><td>°C a cada 2 s; <b>evento imediato</b> ao cruzar 27 °C</td><td>digitar <code>q</code> (esquenta) ou <code>n</code> (normal) no terminal do sensor</td></tr>
+  <tr><td><code>pdu-rack-A/B</code></td><td>PDU (distribuição de energia do rack)</td><td>Não</td><td>Potência em W a cada 2 s</td><td>digitar <code>q</code> (pico de 6500 W) ou <code>n</code> no terminal da PDU</td></tr>
+</table>
+<h3>Perguntas prováveis sobre os dispositivos</h3>
+<ul>
+  <li><b>Como o dispositivo sabe para onde enviar?</b> Aprende com o pedido de descoberta (<code>gateway_ip</code> e <code>gateway_porta_udp</code>). Antes do primeiro pedido, não envia nada.</li>
+  <li><b>Como o gateway identifica o dispositivo?</b> Pelo <code>fonte_id</code> único, escolhido na linha de comando; a descoberta informa tipo, IP, porta e estado inicial.</li>
+  <li><b>Qual o tamanho de uma leitura?</b> Algumas dezenas de bytes por datagrama (dá para ver os bytes reais ligando "Mostrar bytes" na simulação da demonstração).</li>
+  <li><b>O que acontece se o dispositivo reinicia?</b> O <code>seq</code> volta a 0 e o gateway trata isso como reinício, sem alarme. Na próxima rodada de descoberta ele é recadastrado.</li>
+  <li><b>E se o dispositivo ficar sem energia/rede?</b> Param as leituras; após 3 intervalos fica <code>INATIVA</code>; se for o ar-condicionado, comandos retornam <code>UNAVAILABLE</code>.</li>
+  <li><b>Por que simulados?</b> O foco da disciplina é a comunicação distribuída; simular o equipamento permite reproduzir falhas e picos na hora da demonstração e rodar tudo num notebook.</li>
+  <li><b>Os dados são reais?</b> Não: valores gerados por um modelo simples (temperatura que tende ao setpoint com ruído; consumo com ruído em torno de uma base).</li>
+</ul>
+<div class="aviso"><b>Vídeo.</b> O vídeo de até 7 minutos (processos iniciando, cliente em uso e uma falha simulada) é parte da entrega e já tem roteiro. Tenha o link aberto na arguição.</div>
+
+<!-- ============================ 10 ============================ -->
+<h2>10. Limitações que vale admitir</h2>
+<p>Admitir o limite com clareza costuma soar melhor do que ser surpreendido. As principais, todas conhecidas:</p>
+<ul>
+  <li><b>Gateway é ponto único de falha.</b> Se cai, o cadastro de fontes se perde (volta na próxima rodada de descoberta, até 30 s); o histórico persiste no CSV.</li>
+  <li><b>Sem TLS nem autenticação:</b> qualquer um na rede pode falar com o gateway, inclusive enviar leituras falsas por UDP. Em produção usaríamos TLS no gRPC e no TCP.</li>
+  <li><b>Detector por tempo</b> não distingue fonte caída de rede caída.</li>
+  <li><b><code>ObterEstado</code> existe no contrato e na fonte, mas o gateway não o chama:</b> o estado chega pela descoberta, pelo <code>estado_ar</code> anexado às leituras e pela resposta do <code>Configurar</code>. Foi mantido por completar o serviço.</li>
+  <li><b>Leituras de fontes não descobertas</b> também são aceitas e entram no histórico e nas consultas (a validação é só de campos básicos).</li>
+  <li><b>Um canal gRPC por comando</b> e <b>uma thread por cliente TCP</b>: simples, mas não escala para muitos comandos ou clientes.</li>
+  <li><b>CSV cresce sem limite</b> e <code>historico</code> lê o arquivo inteiro.</li>
+  <li><b>Multicast depende da rede:</b> algumas redes (Wi-Fi com isolamento de clientes, redes corporativas) bloqueiam. Veja o roteiro da seção 12.</li>
+</ul>
+
+<!-- ============================ 11 ============================ -->
+<h2>11. Mapa: pergunta → onde está no código</h2>
+<table>
+  <tr><th>Se perguntarem…</th><th>Mostre</th></tr>
+  <tr><td>Onde está o contrato?</td><td><code>src/main/proto/datacenter.proto</code></td></tr>
+  <tr><td>Onde o gateway envia o pedido de descoberta? E confere o nonce?</td><td><code>Gateway.descobrir()</code></td></tr>
+  <tr><td>Como a fonte responde à descoberta?</td><td><code>DescobertaFonte.run()</code></td></tr>
+  <tr><td>Onde chega uma leitura UDP?</td><td><code>Gateway.receberLeituras()</code></td></tr>
+  <tr><td>Como detecta perda/duplicação de UDP?</td><td><code>Cadastro.registrarLeitura()</code> (confere o <code>seq</code>)</td></tr>
+  <tr><td>Onde está o critério de inatividade?</td><td><code>Cadastro.montar()</code> e <code>Config.TOLERANCIA_INATIVIDADE</code></td></tr>
+  <tr><td>Onde o sensor dispara o evento do limiar?</td><td><code>SensorTemperatura.enviarLeituras()</code> (variável <code>evento</code>)</td></tr>
+  <tr><td>Onde o gateway chama o gRPC?</td><td><code>Gateway.comandar()</code></td></tr>
+  <tr><td>Onde o ar-condicionado valida e aplica?</td><td><code>ArCondicionado.validar()</code>, <code>aplicar()</code>, <code>Servico.configurar()</code></td></tr>
+  <tr><td>Como o TCP separa as mensagens?</td><td><code>Quadro.enviar()</code> / <code>Quadro.receber()</code></td></tr>
+  <tr><td>Onde as 3 consultas são calculadas?</td><td><code>Cadastro.consultar()</code></td></tr>
+  <tr><td>Onde o CSV é gravado e recarregado?</td><td><code>HistoricoCsv.gravar()</code>, <code>carregar()</code>; uso em <code>Gateway.main()</code> e <code>receberLeituras()</code></td></tr>
+  <tr><td>Como o cliente interpreta os comandos?</td><td><code>Cliente.montarPedido()</code></td></tr>
+  <tr><td>Como o multicast escolhe a placa de rede?</td><td><code>Rede.escolherInterface()</code></td></tr>
+</table>
+
+<!-- ============================ 12 ============================ -->
+<h2 class="nova">12. Antes da arguição: deixar tudo rodando</h2>
+<p>O professor pediu para <b>deixar tudo configurado antes de começar</b>, para ver rodando. Faça o ensaio completo uma vez, no mesmo notebook e na mesma rede da arguição.</p>
+
+<h3>Checklist (do dia anterior até a hora)</h3>
+<ol>
+  <li><b>Atualizar o código:</b> <code>git pull</code> e <code>mvn -q compile</code> (não deve imprimir nada; precisa de internet na primeira vez).</li>
+  <li><b>Limpar processos antigos:</b> <code>pkill -f 'java.*dc[.]'</code>.</li>
+  <li><b>Escolher a forma de subir:</b>
+    <ul>
+      <li><b>Painel (mais prático):</b> <code>./rodar.sh Painel</code>, abrir <code>http://localhost:8099/</code> no Chrome, conferir "Java real conectado" e clicar <b>Subir tudo</b>.</li>
+      <li><b>7 terminais (mais "cru"):</b> na ordem do <code>README</code>: ar-condicionado, 2 sensores, 2 PDUs, <b>gateway</b>, cliente.</li>
+    </ul></li>
+  <li><b>Conferir a rede (o ponto mais frágil).</b> O multicast precisa de uma rede ativa que o permita. Se o notebook tiver mais de uma interface, descubra o nome com <code>ip -br a</code> e use o <b>mesmo</b> <code>JAVA_OPTS="-Ddc.interface=&lt;nome&gt;"</code> em todos os processos.
+    Teste <b>sem internet</b> e na rede da sala (Wi-Fi institucional costuma bloquear multicast). Alternativa: hotspot do celular ou cabo.</li>
+  <li><b>Conferir o resultado:</b> no cliente, <code>listar</code> deve mostrar <b>5 fontes ATIVAS</b>. Sinal de que deu certo: o log do gateway com <code>[descoberta] nova fonte</code> cinco vezes.</li>
+  <li><b>Decidir sobre o histórico:</b> se quiser começar do zero, apague <code>data/leituras.csv</code> antes de subir. Se preferir mostrar dados de ensaios, mantenha.</li>
+  <li><b>Deixar prontos para mostrar:</b> <code>listar</code> já executado; os terminais do sensor A (para digitar <code>q</code>) e da PDU B; <code>historico 5</code> pré-digitado se possível.</li>
+  <li><b>Deixar abertos:</b> <code>slides.pdf</code>, este guia, o repositório e os arquivos-chave no editor (<code>datacenter.proto</code>, <code>Gateway.java</code>, <code>Cadastro.java</code>).</li>
+  <li><b>Deixar o vídeo</b> aberto (link testado em janela anônima).</li>
+  <li><b>Notebook:</b> carregador na tomada, notificações desligadas, zoom do terminal legível, tela espelhada ou compartilhada testada.</li>
+</ol>
+
+<h3>Plano B se o multicast falhar na sala</h3>
+<ul>
+  <li>Usar a <b>simulação</b> da página <code>demo-online.html</code> (botão "Simulação"): não depende de rede e mostra os mesmos comportamentos, inclusive os bytes reais do Protobuf. O endereço público fica no formulário de entrega (GitHub Pages).</li>
+  <li>Mostrar o <b>vídeo</b> gravado com tudo funcionando e explicar o que falhou (rede bloqueando multicast); é um problema de ambiente conhecido, não do código.</li>
+</ul>
+
+<h3>Roteiro de demonstração (2 a 3 minutos)</h3>
+<ol>
+  <li><code>listar</code> → 5 fontes ATIVAS (descoberta funcionou).</li>
+  <li>No terminal do sensor A, <code>q</code> → aparece <code>&lt;&lt;&lt; EVENTO</code> no gateway na hora (UDP + evento imediato). <code>n</code> → novo evento.</li>
+  <li><code>setpoint ar-01 99</code> → recusado (<code>INVALID_ARGUMENT</code>); <code>setpoint ar-01 20</code> → aceito (gRPC).</li>
+  <li>Na PDU B, <code>q</code>; depois <code>consulta media 10</code>, <code>consulta rack 10</code>, <code>consulta pico 10</code> (TCP e agregações).</li>
+  <li><code>historico temp-rack-A 5</code>; reiniciar o gateway; repetir (persistência).</li>
+  <li>Matar o ar-condicionado; <code>setpoint ar-01 21</code> → <code>UNAVAILABLE</code>; após alguns segundos <code>listar</code> → <code>ar-01 INATIVA</code> (falha).</li>
+</ol>
+
+<h3>Dividir a fala</h3>
+<p>Veja o arquivo <code>docs/DIVISAO_SLIDES.md</code>: quem apresenta cada slide e o que dizer. Combinem também <b>quem opera os terminais</b> enquanto o outro explica.</p>
+
+</body>
+</html>
